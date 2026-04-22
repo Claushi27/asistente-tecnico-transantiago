@@ -1,4 +1,5 @@
 import customtkinter as ctk
+import tkinter.messagebox as messagebox
 import time
 import threading
 import re
@@ -61,8 +62,8 @@ class ValidadorApp(ctk.CTk):
         # Combo para seleccionar puerto COM
         self.lbl_com = ctk.CTkLabel(self.frame_izq, text="Seleccionar Puerto Serial:")
         self.lbl_com.pack(side="bottom", pady=(0, 5))
-        self.combo_com = ctk.CTkComboBox(self.frame_izq, values=["SIMULADOR (Prueba Local)", "COM1", "COM2", "COM3", "COM4"])
-        self.combo_com.set("SIMULADOR (Prueba Local)")
+        self.combo_com = ctk.CTkComboBox(self.frame_izq, values=["SIMULADOR (Prueba Local)", "COM1", "COM2", "COM3", "COM4", "COM5"])
+        self.combo_com.set("COM1") # Por defecto real en producción
         self.combo_com.pack(side="bottom", pady=(0, 20))
 
         # ==================== FRAME DERECHO ====================
@@ -75,14 +76,17 @@ class ValidadorApp(ctk.CTk):
         self.btn_detener = ctk.CTkButton(self.frame_der, text="⏹️ Detener Reinicio", height=40, fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
         self.btn_detener.pack(pady=10, padx=20, fill="x")
 
-        self.btn_reparar = ctk.CTkButton(self.frame_der, text="🗑️ Eliminar NO y Reiniciar", height=40, fg_color="#DC2626", hover_color="#991B1B", command=lambda: self.arrancar_hilo(self.ejecutar_reparacion))
+        self.btn_reparar = ctk.CTkButton(self.frame_der, text="🗑️ Eliminar NO y Reiniciar", height=40, fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
         self.btn_reparar.pack(pady=10, padx=20, fill="x")
 
         self.btn_trx = ctk.CTkButton(self.frame_der, text="💳 Extraer Transacción Reciente", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
         self.btn_trx.pack(pady=10, padx=20, fill="x")
 
+        self.label_terminal = ctk.CTkLabel(self.frame_der, text="Salida de Consola:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
+
         self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=150, font=ctk.CTkFont(family="Consolas", size=12))
-        self.textbox_consola.pack(padx=20, pady=20, fill="both", expand=True)
+        self.textbox_consola.pack(padx=20, pady=(5, 20), fill="both", expand=True)
 
     def log(self, texto):
         self.textbox_consola.insert("end", texto + "\n")
@@ -100,14 +104,13 @@ class ValidadorApp(ctk.CTk):
         if self.combo_com.get() == "SIMULADOR (Prueba Local)":
             time.sleep(delay / 2) # Falso delay de red
             resp = ""
-            if "ifconfig" in cmd: resp = "inet addr:192.168.100.99"
-            elif cmd == "": resp = "root@cv4 - 289999"
-            elif cmd == "ll": resp = "drwx v_8\n-rw- ok_8\ndrwx v_12\ndrwx no_12\n-rw- check_9"
+            if "ifconfig" in cmd: resp = "inet 10.38.64.10"
+            elif cmd == "": resp = "root@cv4-28000001847:/home/pds#"
+            elif cmd == "ll" and "trx" not in cmd: resp = "drwx V_8\n-rw- ok_8\ndrwx v_12\ndrwx NO_12\n-rw- check_V_8"
             elif "tail" in cmd: resp = "INFO log init\nSAM COLD RESET\nWARN low disk"
             elif "rm " in cmd: resp = ""
-            elif "trx" in cmd and "ll" in cmd: resp = "drwx 1\ndrwx 50"
-            elif cmd == "ll" and "50" in cmd: resp = "-rw- idx_91919191" # Simula entrar a carpeta 50
-            else: resp = f"Comando '{cmd}' ejecutado en Validador Falso."
+            elif "trx" in cmd and "ll" in cmd: resp = "drwx 1\ndrwx 21\n-rw- idx_21_07401847_2026.idx"
+            else: resp = f"Comando '{cmd}'."
             
             self.log(f"> {cmd}\n{resp}")
             return resp
@@ -134,10 +137,10 @@ class ValidadorApp(ctk.CTk):
                 self.ser.close()
             # Validador transantiago usa tipicamente 115200 baudios en su puerto consola
             self.ser = serial.Serial(puerto, 115200, timeout=2)
-            self.log(f"[+] Abierto puerto {puerto}")
+            self.log(f"\n[+] Abierto puerto {puerto}")
             time.sleep(0.5)
 
-            # Presionar enter a ver si pide login
+            # Presionar enter a ver si pide login o tira el prompt
             resp = self.enviar_y_leer("", delay=0.5)
             if "login:" in resp.lower() or "root" not in resp:
                 self.log("[+] Enviando credenciales de root...")
@@ -146,7 +149,7 @@ class ValidadorApp(ctk.CTk):
             
             return True
         except Exception as e:
-            self.log(f"[ERROR] No se pudo abrir {puerto}: {e}")
+            self.log(f"[ERROR] No se pudo conectar a {puerto}: {e}")
             return False
 
     # ================= FLUJOS PRINCIPALES =================
@@ -158,16 +161,16 @@ class ValidadorApp(ctk.CTk):
         try:
             # 1. Obtener ID del prompt
             resp = self.enviar_y_leer("", delay=0.5)
-            # Buscamos algo como root@cv4 - 2800000
-            id_match = re.search(r'root@cv4\s*-\s*28(\d{4})', resp)
+            # Buscamos los ultimos 4 digitos antes de los dospuntos o arrobas: ej root@cv4-28000001847
+            id_match = re.search(r'280+(\d{4})(?!\d)', resp)
             if id_match:
                 self.lbl_id.configure(text=f"ID Validador: {id_match.group(1)}", text_color="green")
             else:
-                self.lbl_id.configure(text="ID Validador: Desconocido")
+                self.lbl_id.configure(text="ID Validador: --")
 
-            # 2. Revisar IP eth0
+            # 2. Revisar IP eth0 (Mejorado para buscar ips limpias tambien)
             resp_ip = self.enviar_y_leer("ifconfig eth0", delay=0.5)
-            ip_match = re.search(r'inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)', resp_ip)
+            ip_match = re.search(r'inet\s+(?:addr:)?(\d+\.\d+\.\d+\.\d+)', resp_ip)
             if ip_match:
                 self.lbl_ip.configure(text=f"IP (eth0): {ip_match.group(1)}")
             
@@ -175,125 +178,123 @@ class ValidadorApp(ctk.CTk):
             self.enviar_y_leer("cd /home/pds", delay=0.5)
             listado_ll = self.enviar_y_leer("ll", delay=1.0)
             
-            # Parsear resultados
+            # Parsear resultados insensible a MAYUSCULAS
             v_nums = []
             ok_str, no_str, check_str = "--", "--", "--"
             self.target_no_version = None
 
             for palabra in listado_ll.split():
-                if palabra.startswith("v_"):
-                    # Extraer digitos
-                    num = re.findall(r'\d+', palabra)
-                    if num: v_nums.append(int(num[-1]))
-                elif palabra.startswith("ok_"):
+                p_lower = palabra.lower()
+                if p_lower.startswith("v_"):
+                    num = re.findall(r'\d+', p_lower)
+                    if num: v_nums.append((int(num[-1]), palabra))
+                elif p_lower.startswith("ok_"):
                     ok_str = palabra
-                elif palabra.startswith("no_"):
+                elif p_lower.startswith("no_"):
                     no_str = palabra
-                    self.target_no_version = palabra # Guardamos matemáticamente y seguro
-                elif palabra.startswith("check_"):
+                    self.target_no_version = palabra # Guardamos EXACTO para borrarlo bien
+                elif p_lower.startswith("check_"):
                     check_str = palabra
             
-            v_max = f"v_{max(v_nums)}" if v_nums else "--"
+            # Seleccionar el v_ más alto si existen varios
+            v_max_str = max(v_nums, key=lambda x: x[0])[1] if v_nums else "--"
 
-            self.lbl_v_max.configure(text=f"Versión Alta (v_): {v_max}")
+            self.lbl_v_max.configure(text=f"Versión Alta (v_): {v_max_str}")
             self.lbl_ok.configure(text=f"Estado OK_ : {ok_str}", text_color="green" if ok_str != "--" else "white")
             self.lbl_no.configure(text=f"Estado NO_ : {no_str}", text_color="red" if no_str != "--" else "white")
             self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
-            if no_str != "--":
-                self.log(f"⚠️ ATENCIÓN: Se detectó versión con fallo: {no_str}. Puedes usar el botón de eliminar.")
-
             # 4. Logs Mval
-            # El usuario confirmó que es estático
             salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             if "SAM COLD RESET" in salida_log:
-                self.lbl_sam.configure(text="SAM COLD RESET: ALERTA DETECTADA ROJA", fg_color="red", text_color="white")
+                self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
             else:
-                self.lbl_sam.configure(text="SAM COLD RESET: NO HAY ERRORES", fg_color="green", text_color="white")
+                self.lbl_sam.configure(text="SAM COLD RESET: OK (No hay error)", fg_color="green", text_color="white")
 
             self.log("\n[=========== ESCANEO FINALIZADO ===========]")
         
         except Exception as e:
             self.log(f"[ERROR EXCEPCIÓN] {e}")
-            self.log(traceback.format_exc())
 
     def ejecutar_detener(self):
-        if not self.ser or not self.ser.is_open:
-            self.log("[ERROR] Ejecuta la conexión (Escaneo) primero.")
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Ejecuta la conexión (Conectar y Analizar Data) primero.")
             return
+        
+        self.log("\n[-] Enviando comando para DETENER GENERADOR...")
         self.enviar_y_leer("ngc --stop daemon/generador_partida", delay=1.0)
-        self.log("[+] Comando detener enviado. Revisa confirmación de status arriba.")
+        self.log("[+] Comando enviado exitosamente.")
 
-    def ejecutar_reparacion(self):
-        if not self.ser or not self.ser.is_open:
-            self.log("[ERROR] Debes conectarte primero.")
-            return
-        
-        # EL ESCUDO DE SEGURIDAD (Safeguard)
-        if not self.target_no_version or not self.target_no_version.startswith("no_"):
-            self.log("[SEC ERROR] No se detectó ninguna carpeta válida 'no_...' para borrar de forma segura. Operación abortada.")
-            return
-
-        self.log(f"\n[!] INICIANDO HIGIENIZACIÓN DE: {self.target_no_version}")
-        self.enviar_y_leer(f"rm -r /home/pds/{self.target_no_version}", delay=1.0)
-        
-        # Validar si se eliminó
-        ll_post = self.enviar_y_leer("ll /home/pds", delay=1.0)
-        if self.target_no_version in ll_post:
-            self.log(f"[!!!] ADVERTENCIA: {self.target_no_version} parece no haberse eliminado. Puede que necesitemos sudo o el comando ll dio error.")
-        else:
-            self.log(f"[+] Eliminado exitosamente: {self.target_no_version}. Sincronizando...")
-        
-        self.enviar_y_leer("sync", delay=2.0)
-        self.log("[+] Reiniciando Validador (ngreboot)...")
-        self.enviar_y_leer("ngreboot", delay=1.0)
-        self.ser.close()
-        self.log("[-] Conexión cerrada. Espera a que el equipo levante de nuevo.")
-
-    def ejecutar_trx(self):
-        if not self.ser or not self.ser.is_open:
-            self.log("[ERROR] Ejecuta la conexión (Escaneo) primero para abrir el COM.")
+    def pedir_confirmacion_reparar(self):
+        # Escudo UI para confirmación del comando a ejecutar
+        if not self.target_no_version or not self.target_no_version.lower().startswith("no_"):
+            messagebox.showwarning("Invalido", "El sistema NO reportó ninguna versión con error (NO_). No hay nada que borrar.")
             return
             
-        self.log("\n[-] BUSCANDO ÚLTIMAS ID TRX...")
-        self.enviar_y_leer("cd /home/pds/btransa/trx", delay=0.5)
-        salida_directorios = self.enviar_y_leer("ll", delay=1.0)
+        comandos_str = f"1. rm -r /home/pds/{self.target_no_version}\n2. sync\n3. ngreboot"
         
-        # Parse output folder seeking logic
-        numeros_carpetas = []
-        for linea in salida_directorios.split('\n'):
+        # Leemos confirmación antes de la destrucción
+        resp = messagebox.askyesno("CONFIRMACIÓN DE COMANDOS CRÍTICOS", f"¿Estás completamente seguro de enviar esto al Validador?\n\n{comandos_str}")
+        if resp:
+            self.arrancar_hilo(self.ejecutar_reparacion_real)
+        else:
+            self.log("[+] Acción Cancelada por el Usuario.")
+
+    def ejecutar_reparacion_real(self):
+        # Esta es la ruta segura, corre en Hilo por detras despues de apretar YES
+        self.log(f"\n[!] PROCEDIENDO A HIGIENIZAR CARPETA: {self.target_no_version}")
+        self.enviar_y_leer(f"rm -r /home/pds/{self.target_no_version}", delay=1.0)
+        
+        ll_post = self.enviar_y_leer("ll /home/pds", delay=1.0)
+        if self.target_no_version in ll_post:
+            self.log(f"[!!!] FALLO: {self.target_no_version} sigue apareciendo en el LL. Puede requerir permisos sudo o estaba bloqueada.")
+        else:
+            self.log(f"[+] BORRADO VERIFICADO: {self.target_no_version} fue eliminada. Sincronizando FS...")
+            
+        self.enviar_y_leer("sync", delay=2.0)
+        self.log("[+] Forzando Reinicio (ngreboot)...")
+        self.enviar_y_leer("ngreboot", delay=1.0)
+        
+        if self.ser: self.ser.close()
+        self.log("[-] Validador Cerrado. Espera a que prenda físicamente.")
+
+    def ejecutar_trx(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Ejecuta la conexión primero para abrir el COM.")
+            return
+            
+        self.log("\n[-] BUSCANDO DIRECTORIO DE ÚLTIMA TRANSACCIÓN...")
+        self.enviar_y_leer("cd /home/pds/btransa/trx", delay=0.5)
+        salida_ll = self.enviar_y_leer("ll", delay=1.0)
+        
+        # Tu dijiste que las TRX (.idx) salen en el MISMO LL junto con las carpetas.
+        # Buscamos todas las palabras que sean idx_ algo
+        idx_archivos = []
+        for linea in salida_ll.split('\n'):
             linea = linea.strip()
-            # La salida de ll suele tener los nombres al final, ejemplo: "drwxr-xr-x 2 root root 4096 oct 24 10:00 45"
             arr = linea.split()
             if arr:
                 nombre = arr[-1]
-                if nombre.isdigit():
-                    num = int(nombre)
-                    if 0 <= num <= 99:
-                        numeros_carpetas.append(num)
+                if nombre.lower().startswith("idx_"):
+                    # Extraer el numero intermedio para comparar y sacar el maximo
+                    # ejemplo: idx_21_07401847_2026.idx
+                    try:
+                        partes = nombre.split('_')
+                        if len(partes) > 1 and partes[1].isdigit():
+                            num = int(partes[1])
+                            idx_archivos.append((num, nombre))
+                    except:
+                        pass
         
-        if not numeros_carpetas:
-            self.log("[X] No se encontraron carpetas numeradas activas en trx.")
-            return
-        
-        max_carpeta = str(max(numeros_carpetas))
-        self.log(f"[+] Ingresando a la carpeta más alta encontrada: {max_carpeta}")
-        
-        self.enviar_y_leer(f"cd {max_carpeta}", delay=0.5)
-        salida_archivos = self.enviar_y_leer("ll", delay=1.0)
-        
-        idx_final = None
-        # Buscamos referencias de archivos idx_
-        for texto in salida_archivos.split():
-            if texto.startswith("idx_"):
-                idx_final = texto
-        
-        if idx_final:
+        if idx_archivos:
+            # Ordenamos por numero y agarramos el mas alto (la mas nueva)
+            max_idx_nombre = max(idx_archivos, key=lambda x: x[0])[1]
             self.log(f"\n[=============== TRX ENCONTRADO ===============]")
-            self.log(f"Última Transacción ID: {idx_final}")
+            self.log(f"Último Archivo IDX Extraído:")
+            self.log(f"-> {max_idx_nombre}")
             self.log(f"[==============================================]\n")
         else:
-            self.log("[X] No se hallaron archivos idx_ en la carpeta.")
+            self.log("[X] No se hallaron archivos idx_ en la carpeta raíz trx.")
 
 
 if __name__ == "__main__":
