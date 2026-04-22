@@ -122,11 +122,11 @@ class ValidadorApp(ctk.CTk):
             if "ifconfig" in cmd: resp = "inet 10.38.64.10"
             elif cmd == "": resp = "root@cv4-28000001847:/home/pds#"
             # Si estamos dentro de la carpeta TRX y pedimos listado:
-            elif cmd == "ll" and self.simulacion_en_carpeta_21: resp = "-rw- 2145\n-rw- 2189\n-rw- 2100"
+            elif cmd == "ll" and self.simulacion_en_carpeta_21: resp = "-rw- trx_2190_07401847.bin\n-rw- trx_2191_07401847.bin\n-rw- trx_2193_07401847.bin"
             # Si estamos en ll general o pds:
             elif cmd == "ll" and "trx" not in cmd: resp = "drwx V_8\n-rw- ok_8\ndrwx v_12\ndrwx NO_12\n-rw- check_V_8\n-rw- infoval_07401847.csv"
             # Si estamos pidiendo la lista de directorios TRX principales
-            elif "trx" in cmd and "ll" in cmd: resp = "drwxr-xr-x 0/\ndrwxr-xr-x 1/\ndrwxr-xr-x 21/\n-rw- idx_2800.idx"
+            elif "trx" in cmd and "ll" in cmd: resp = "drwxr-xr-x 0/\ndrwxr-xr-x 1/\ndrwxr-xr-x 21/\n-rw- idx_21_0740.idx"
             elif "tail" in cmd: resp = "INFO log init\nSAM COLD RESET\nWARN low disk"
             elif "rm " in cmd: resp = ""
             elif "cd 21" in cmd: 
@@ -292,13 +292,13 @@ class ValidadorApp(ctk.CTk):
         self.enviar_y_leer("cd /home/pds/btransa/trx", delay=0.5)
         salida_ll = self.enviar_y_leer("ll", delay=1.0)
         
-        # 1. Buscar entre todo el terminal los nombres de carpetas
+        # 1. Buscar las carpetas con números (ejemplo: 0/, 1/... 21/)
         carpetas_ids = []
         for linea in salida_ll.split('\n'):
             linea = linea.strip()
             arr = linea.split()
             if arr:
-                # Quitamos la barra lateral por si en ll salen como "21/" o "10/"
+                # Quitar la barra inclinada si la tiene
                 nombre = arr[-1].replace("/", "") 
                 if nombre.isdigit():
                     carpetas_ids.append(int(nombre))
@@ -308,40 +308,40 @@ class ValidadorApp(ctk.CTk):
             return
             
         max_carpeta = str(max(carpetas_ids))
-        self.log(f"[+] La carpeta máxima encontrada es: {max_carpeta}")
+        self.log(f"[+] Entrando a la sub-carpeta de transacciones: {max_carpeta}")
         
         # 2. ENTRAR A ESA CARPETA
         self.enviar_y_leer(f"cd {max_carpeta}", delay=0.5)
-        self.log(f"[-] Examinando interior de /{max_carpeta}/...")
+        self.log(f"[-] Buscando archivos trx_ en /{max_carpeta}/...")
         salida_interior = self.enviar_y_leer("ll", delay=1.0)
 
-        # 3. Extraer el mayor número dentro (ej: 2100, 2189)
-        max_trx_val = -1
-        max_trx_nombre = ""
+        # 3. Extraer el archivo trx_ con el número interno más alto
+        trx_lista = []
         
         for linea in salida_interior.split('\n'):
             linea = linea.strip()
             arr = linea.split()
             if arr:
                 nom_arch = arr[-1]
-                # Extaremos todos los caracteres que sean un número en el nombre
-                digitos_encontrados = re.findall(r'\d+', nom_arch)
-                # Si encontró algún número (como '2100')
-                if digitos_encontrados:
-                    # Concatena en caso de que fuera ej: trans_2100.txt
-                    num_completo = int(''.join(digitos_encontrados))
-                    if num_completo > max_trx_val:
-                        max_trx_val = num_completo
-                        max_trx_nombre = nom_arch
+                # Buscar estricto los que empiezan validamente con trx_
+                if nom_arch.startswith("trx_"):
+                    # Ejemplo: trx_2193_07401847_2026.bin
+                    partes = nom_arch.split('_')
+                    if len(partes) > 1 and partes[1].isdigit():
+                        trx_lista.append((int(partes[1]), nom_arch))
 
-        if max_trx_nombre:
+        if trx_lista:
+            # Seleccionamos el trx mas alto
+            max_trx = max(trx_lista, key=lambda x: x[0])
+            max_trx_num = max_trx[0]
+            max_trx_nombre = max_trx[1]
+            
             self.log(f"\n[=============== TRX IDENTIFICADA ===============]")
-            self.log(f"La transacción más reciente en la carpeta /{max_carpeta} es:")
-            self.log(f"-> {max_trx_nombre}")
-            self.log(f"Valor interno indexado: {max_trx_val}")
+            self.log(f"Última Transacción registrada: ID {max_trx_num}")
+            self.log(f"-> Registrada en el archivo: {max_trx_nombre}")
             self.log(f"[================================================]\n")
         else:
-            self.log(f"[X] No se detectaron archivos de código numérico en /{max_carpeta}/")
+            self.log(f"[X] No se detectaron archivos de transaccion trx_ en la carpeta /{max_carpeta}/")
 
 
 if __name__ == "__main__":
