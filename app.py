@@ -110,6 +110,9 @@ class ValidadorApp(ctk.CTk):
         self.entry_manual.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.entry_manual.bind("<Return>", lambda event: self.arrancar_hilo(self.enviar_comando_manual))
         
+        self.btn_ctrl_c = ctk.CTkButton(self.frame_manual, text="🛑 Ctrl+C", width=80, fg_color="#DC2626", hover_color="#991B1B", command=self.enviar_ctrl_c)
+        self.btn_ctrl_c.pack(side="left", padx=(0, 10))
+        
         self.btn_manual = ctk.CTkButton(self.frame_manual, text="📤 Enviar", width=100, fg_color="#4F46E5", hover_color="#4338CA", command=lambda: self.arrancar_hilo(self.enviar_comando_manual))
         self.btn_manual.pack(side="right")
 
@@ -285,7 +288,7 @@ class ValidadorApp(ctk.CTk):
             self.lbl_no.configure(text=f"Estado NO_ : {no_str}", text_color="red" if no_str != "--" else "white")
             self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
-            salida_log = self.enviar_y_leer("tail -100 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
+            salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             if "SAM COLD RESET" in salida_log:
                 self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
             else:
@@ -317,6 +320,14 @@ class ValidadorApp(ctk.CTk):
         self.enviar_y_leer("ngreboot", delay=1.0)
         if self.ser: self.ser.close()
         self.log("[-] Apagado. Desconecta cable y espera que prenda físico.")
+        
+    def enviar_ctrl_c(self):
+        if not self.ser or not self.ser.is_open:
+            self.log("[ERROR] Conecta primero al puerto COM.")
+            return
+        # El caracter ASCII para un Ctrl+C en terminales es el Byte 0x03
+        self.ser.write(b'\x03')
+        self.log("\n[!] Señal de Interrupción enviada (Ctrl+C).")
 
     def enviar_comando_manual(self):
         comando = self.entry_manual.get().strip()
