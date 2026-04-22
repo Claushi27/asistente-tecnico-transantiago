@@ -165,13 +165,15 @@ class ValidadorApp(ctk.CTk):
         time.sleep(delay) # Espera inicial
         
         output = b""
-        # Bucle de drenaje: Sigue leyendo si el validador sigue "vomitando" datos pesados (Como tail -200)
-        while True:
+        intentos_vacio = 0
+        # Bucle de drenaje robusto: Tolera micro-pausas en la transmisión
+        while intentos_vacio < 4: # Se rendirá solo si hay silencio absoluto por 0.4 segundos
             if self.ser.in_waiting > 0:
                 output += self.ser.read(self.ser.in_waiting)
-                time.sleep(0.2) # Damos chance a que el puerto serial reciba más fragmentos
+                intentos_vacio = 0 # Reiniciar el contador porque llegó texto fresco
             else:
-                break
+                intentos_vacio += 1
+            time.sleep(0.1)
                 
         salida_limpia = self.limpiar_texto(output.decode('utf-8', errors='ignore'))
         
