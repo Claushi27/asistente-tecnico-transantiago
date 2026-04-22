@@ -160,27 +160,32 @@ class ValidadorApp(ctk.CTk):
         # --- 3. Flujo Real PySerial hacia el Validador Físico ---
         if not self.ser or not self.ser.is_open:
             return ""
+            
+        # Limpiar cualquier basura vieja del cable antes de mandar el comando nuevo
+        self.ser.reset_input_buffer()
+        
         self.ser.write((cmd + "\n").encode('utf-8', errors='ignore'))
         
         time.sleep(delay) # Espera inicial
         
         output = b""
-        intentos_vacio = 0
         
-        # Super-Bucle de drenaje: Tolera hasta 1.5 segundos de lag, o corta perfecto si ve el Prompt de Linux
-        while intentos_vacio < 15: 
-            if self.ser.in_waiting > 0:
-                output += self.ser.read(self.ser.in_waiting)
-                intentos_vacio = 0 
-                
-                # Caza de Prompt Inteligente: Si el final del bloque dice "root@" y termina en "#", el comando terminó.
-                if b"root@" in output and b"#" in output[-15:]:
-                    time.sleep(0.1) # Drenaje final por si acaso
-                    output += self.ser.read(self.ser.in_waiting)
+        # Bucle de Bloques Nativos (Cero micro-cortes garantizado)
+        # La función read(4096) pone en pausa el código hasta que lleguen esos bytes 
+        # o se cumplan exactamente 2 SEGUNDOS DE SILENCIO TOTAL (timeout que seteamos al abrir conexion)
+        while True:
+            chunk = self.ser.read(4096)
+            if chunk:
+                output += chunk
+                # Acabamos rápido si identificamos el final limpio del validador
+                if b"root" in output and b"#" in output[-25:]:
+                    time.sleep(0.1) # Drenaje finalito
+                    if self.ser.in_waiting > 0:
+                        output += self.ser.read(self.ser.in_waiting)
                     break 
             else:
-                intentos_vacio += 1
-            time.sleep(0.1)
+                # Si chunk viene vacío es porque pasaron 2 segundos completos de timeout sin recibir letras.
+                break 
                 
         salida_limpia = self.limpiar_texto(output.decode('utf-8', errors='ignore'))
         
