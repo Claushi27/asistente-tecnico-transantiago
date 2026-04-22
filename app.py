@@ -170,21 +170,28 @@ class ValidadorApp(ctk.CTk):
         
         output = b""
         
+        # Reconocer comandos crudos masivos para no aplicar filtros
+        es_masivo = "tail" in cmd.lower() or "cat" in cmd.lower()
+        
         # Bucle de Bloques Nativos (Cero micro-cortes garantizado)
-        # La función read(4096) pone en pausa el código hasta que lleguen esos bytes 
-        # o se cumplan exactamente 2 SEGUNDOS DE SILENCIO TOTAL (timeout que seteamos al abrir conexion)
+        # La función read(8192) pone en pausa el código hasta que lleguen fragmentos
         while True:
-            chunk = self.ser.read(4096)
+            chunk = self.ser.read(8192)
             if chunk:
                 output += chunk
-                # Acabamos rápido si identificamos el final limpio del validador
-                if b"root" in output and b"#" in output[-25:]:
-                    time.sleep(0.1) # Drenaje finalito
-                    if self.ser.in_waiting > 0:
-                        output += self.ser.read(self.ser.in_waiting)
-                    break 
+                
+                # Para comandos cortos (ls, cd), cortamos instántaneo si vemos el '#'
+                # PERO para los gigantes como 'tail', apagamos este atajo de corte 
+                # y lo obligamos a usar el timeout incondicional para evitar que se coma líneas por accidente.
+                if not es_masivo:
+                    if output.endswith(b"#") or output.endswith(b"# "):
+                        if b"root" in output[-80:]:
+                            time.sleep(0.1)
+                            if self.ser.in_waiting > 0:
+                                output += self.ser.read(self.ser.in_waiting)
+                            break 
             else:
-                # Si chunk viene vacío es porque pasaron 2 segundos completos de timeout sin recibir letras.
+                # Si chunk viene vacío es porque pasaron los 3 segundos de timeout sin recibir NADA.
                 break 
                 
         salida_limpia = self.limpiar_texto(output.decode('utf-8', errors='ignore'))
@@ -205,7 +212,8 @@ class ValidadorApp(ctk.CTk):
             if self.ser and self.ser.is_open:
                 self.ser.close()
             # Validador transantiago usa tipicamente 115200 baudios en su puerto consola
-            self.ser = serial.Serial(puerto, 115200, timeout=2)
+            # Set a 3-second timeout to guarantee huge massive payloads don't drop on minor stutters
+            self.ser = serial.Serial(puerto, 115200, timeout=3)
             self.log(f"\n[+] Abierto puerto FÍSICO: {puerto}")
             time.sleep(0.5)
 
