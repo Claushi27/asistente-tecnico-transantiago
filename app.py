@@ -26,6 +26,7 @@ class ValidadorApp(ctk.CTk):
         self.ser = None 
         self.target_no_version = None 
         self.simulacion_en_carpeta_21 = False
+        self.monitor_activo = False
 
         self._crear_interfaz()
 
@@ -47,23 +48,27 @@ class ValidadorApp(ctk.CTk):
         self.frame_versiones = ctk.CTkFrame(self.frame_izq, fg_color="transparent")
         self.frame_versiones.pack(pady=20, padx=10, fill="x")
 
-        self.lbl_v_max = ctk.CTkLabel(self.frame_versiones, text="Versión Alta (v_): --")
-        self.lbl_v_max.pack(anchor="w", pady=2)
-        self.lbl_ok = ctk.CTkLabel(self.frame_versiones, text="Estado OK_ : --", text_color="green")
-        self.lbl_ok.pack(anchor="w", pady=2)
-        self.lbl_no = ctk.CTkLabel(self.frame_versiones, text="Estado NO_ : --", text_color="red")
-        self.lbl_no.pack(anchor="w", pady=2)
-        self.lbl_check = ctk.CTkLabel(self.frame_versiones, text="Estado CHECK_ : --", text_color="orange")
-        self.lbl_check.pack(anchor="w", pady=2)
+        self.lbl_v_max = ctk.CTkLabel(self.frame_versiones, text="Versión Alta: --", font=ctk.CTkFont(size=12))
+        self.lbl_v_max.pack(anchor="w", pady=0)
+        self.lbl_ok = ctk.CTkLabel(self.frame_versiones, text="OK_ : --", text_color="green", font=ctk.CTkFont(size=12))
+        self.lbl_ok.pack(anchor="w", pady=0)
+        self.lbl_no = ctk.CTkLabel(self.frame_versiones, text="NO_ : --", text_color="red", font=ctk.CTkFont(size=12))
+        self.lbl_no.pack(anchor="w", pady=0)
+        self.lbl_check = ctk.CTkLabel(self.frame_versiones, text="CHECK_ : --", text_color="orange", font=ctk.CTkFont(size=12))
+        self.lbl_check.pack(anchor="w", pady=0)
 
-        self.lbl_sam = ctk.CTkLabel(self.frame_izq, text="SAM COLD RESET: --", font=ctk.CTkFont(size=14, weight="bold"), fg_color="gray", corner_radius=5)
-        self.lbl_sam.pack(pady=20, ipadx=10, ipady=5)
+        self.lbl_sam = ctk.CTkLabel(self.frame_izq, text="SAM COLD RESET: --", font=ctk.CTkFont(size=12, weight="bold"), fg_color="gray", corner_radius=5)
+        self.lbl_sam.pack(pady=(10,20), ipadx=10, ipady=3)
 
-        self.lbl_com = ctk.CTkLabel(self.frame_izq, text="Seleccionar Puerto Serial:")
-        self.lbl_com.pack(side="bottom", pady=(0, 5))
+        self.btn_monitor = ctk.CTkButton(self.frame_izq, text="📡 Modo Monitor (Ver Arranque)", fg_color="#6366F1", hover_color="#4F46E5", font=ctk.CTkFont(weight="bold"), command=self.toggle_monitor)
+        self.btn_monitor.pack(side="bottom", pady=(5, 20), padx=20, fill="x")
+
         self.combo_com = ctk.CTkComboBox(self.frame_izq, values=["SIMULADOR (Prueba Local)", "COM1", "COM2", "COM3"])
         self.combo_com.set("COM1") 
-        self.combo_com.pack(side="bottom", pady=(0, 20))
+        self.combo_com.pack(side="bottom", pady=(0, 5), padx=20, fill="x")
+        
+        self.lbl_com = ctk.CTkLabel(self.frame_izq, text="Puerto Serial:")
+        self.lbl_com.pack(side="bottom", pady=0)
 
         # ==================== FRAME DERECHO ====================
         self.frame_der = ctk.CTkFrame(self, corner_radius=10)
@@ -80,43 +85,48 @@ class ValidadorApp(ctk.CTk):
         self.textbox_comandos.pack(pady=(5, 5), padx=10, fill="both", expand=True)
         self.textbox_comandos.insert("end", "[Esperando instrucción...]\n")
 
-        # BOTONES
-        self.btn_escanear = ctk.CTkButton(self.frame_der, text="🔄 1. Conectar y Analizar Data", height=50, command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
-        self.btn_escanear.pack(pady=10, padx=20, fill="x")
+        # BATERÍA DE BOTONES COMPACTA (1 SOLO PANEL EN GRID MODO TETRIS)
+        self.frame_btn_grid = ctk.CTkFrame(self.frame_der, fg_color="transparent")
+        self.frame_btn_grid.pack(pady=5, padx=20, fill="x")
+        self.frame_btn_grid.columnconfigure((0, 1), weight=1)
 
-        self.btn_detener = ctk.CTkButton(self.frame_der, text="⏹️ Detener Reinicio", height=40, fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
-        self.btn_detener.pack(pady=10, padx=20, fill="x")
+        self.btn_escanear = ctk.CTkButton(self.frame_btn_grid, text="🔄 1. Conectar y Analizar Data", height=40, font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
+        self.btn_escanear.grid(row=0, column=0, padx=(0,5), pady=5, sticky="ew")
 
-        self.btn_reparar = ctk.CTkButton(self.frame_der, text="🗑️ Eliminar NO y Reiniciar", height=40, fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
-        self.btn_reparar.pack(pady=10, padx=20, fill="x")
-        
-        self.btn_reinicio = ctk.CTkButton(self.frame_der, text="🔄 Forzar Reinicio (ngreboot)", height=40, fg_color="#475569", hover_color="#334155", command=self.pedir_confirmacion_reinicio)
-        self.btn_reinicio.pack(pady=10, padx=20, fill="x")
+        self.btn_trx = ctk.CTkButton(self.frame_btn_grid, text="💳 Extraer Transacción (TRX)", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
+        self.btn_trx.grid(row=0, column=1, padx=(5,0), pady=5, sticky="ew")
 
-        # --- SECCIÓN HERRAMIENTAS USB ---
+        self.btn_reparar = ctk.CTkButton(self.frame_btn_grid, text="🗑️ Eliminar NO y Reiniciar", height=30, fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
+        self.btn_reparar.grid(row=1, column=0, padx=(0,5), pady=5, sticky="ew")
+
+        self.btn_detener = ctk.CTkButton(self.frame_btn_grid, text="⏹️ Detener Bucle (ngc stop)", height=30, fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
+        self.btn_detener.grid(row=1, column=1, padx=(5,0), pady=5, sticky="ew")
+
+        # --- SECCIÓN HERRAMIENTAS USB ULTRA-COMPACTA ---
         self.frame_usb = ctk.CTkFrame(self.frame_der, fg_color="#1E293B", corner_radius=8)
-        self.frame_usb.pack(pady=5, padx=20, fill="x")
+        self.frame_usb.pack(pady=0, padx=20, fill="x")
         
-        ctk.CTkLabel(self.frame_usb, text="💾 RESPALDO FÍSICO A PENDRIVE USB", font=ctk.CTkFont(size=11, weight="bold"), text_color="#38BDF8").pack(pady=(10,2))
+        self.frame_usb.columnconfigure(0, weight=2)
+        self.frame_usb.columnconfigure(1, weight=1)
+        self.frame_usb.columnconfigure(2, weight=1)
         
-        self.entry_ruta_usb = ctk.CTkEntry(self.frame_usb, placeholder_text="Ruta a copiar (Ej: /home)", font=ctk.CTkFont(family="Consolas", size=13))
-        self.entry_ruta_usb.pack(padx=15, pady=5, fill="x")
-        self.entry_ruta_usb.insert(0, "/home") # Valor por defecto dinámico
+        self.entry_ruta_usb = ctk.CTkEntry(self.frame_usb, placeholder_text="/home", font=ctk.CTkFont(family="Consolas", size=12), height=30)
+        self.entry_ruta_usb.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.entry_ruta_usb.insert(0, "/home")
         
-        self.btn_usb_copiar = ctk.CTkButton(self.frame_usb, text="1. Montar USB y Copiar", fg_color="#2563EB", hover_color="#1D4ED8", command=lambda: self.arrancar_hilo(self.rutina_copiar_usb))
-        self.btn_usb_copiar.pack(pady=2, padx=15, fill="x")
+        self.btn_usb_copiar = ctk.CTkButton(self.frame_usb, text="Montar y Copiar", height=30, fg_color="#2563EB", hover_color="#1D4ED8", command=lambda: self.arrancar_hilo(self.rutina_copiar_usb))
+        self.btn_usb_copiar.grid(row=0, column=1, padx=5, pady=10, sticky="ew")
         
-        self.btn_usb_expulsar = ctk.CTkButton(self.frame_usb, text="2. Desmontar Seguro", fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
-        self.btn_usb_expulsar.pack(pady=(2,10), padx=15, fill="x")
-
-        self.btn_trx = ctk.CTkButton(self.frame_der, text="💳 Extraer Transacción Reciente", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
-        self.btn_trx.pack(pady=10, padx=20, fill="x")
+        self.btn_usb_expulsar = ctk.CTkButton(self.frame_usb, text="Desmontar", height=30, fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
+        self.btn_usb_expulsar.grid(row=0, column=2, padx=10, pady=10, sticky="ew")
 
         self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
-        self.label_terminal.pack(anchor="w", padx=20, pady=(5, 0))
+        self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
 
-        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=100, font=ctk.CTkFont(family="Consolas", size=12))
-        self.textbox_consola.pack(padx=20, pady=(5, 10), fill="both", expand=True)
+        # ACÁ ESTÁ EL CAMBIO CLAVE: expand=True permitirá que este campo crezca 
+        # y devore mágicamente todo el espacio vertical de la pantalla
+        self.textbox_consola = ctk.CTkTextbox(self.frame_der, font=ctk.CTkFont(family="Consolas", size=12))
+        self.textbox_consola.pack(padx=20, pady=(2, 10), fill="both", expand=True)
 
         # RECUADRO DE COMANDO MANUAL DIRECTO (Evita usar PuTTY totalmente)
         self.frame_manual = ctk.CTkFrame(self.frame_der, fg_color="transparent")
@@ -142,9 +152,44 @@ class ValidadorApp(ctk.CTk):
     def arrancar_hilo(self, funcion):
         threading.Thread(target=funcion, daemon=True).start()
 
+    def toggle_monitor(self):
+        if self.monitor_activo:
+            self.monitor_activo = False
+            self.btn_monitor.configure(text="📡 Modo Monitor (Ver Arranque)", fg_color="#6366F1", hover_color="#4F46E5")
+            self.log("\n[+] MODO MONITOR APAGADO. El log vuelve a estar dedicado a respuesta de comandos.")
+        else:
+            if not self.ser or not self.ser.is_open:
+                exito = self.abrir_conexion()
+                if not exito: return
+            
+            self.monitor_activo = True
+            self.btn_monitor.configure(text="⏹️ APAGAR Monitor de Arranque", fg_color="#BE123C", hover_color="#9F1239")
+            self.log("\n[!] ===============================================")
+            self.log("[📡] MODO MONITOR CONTINUO ACTIVADO")
+            self.log("[📡] Escuchando puro RAW como PuTTY. NO ENVIES COMANDOS MIENTRAS ESTO ESTE ACTIVO.")
+            self.log("[!] ===============================================\n")
+            self.arrancar_hilo(self.rutina_monitor_continuo)
+
+    def rutina_monitor_continuo(self):
+        # Esta rutina lee indiscriminadamente el puerto sin comandos previos y escupe en la consola
+        while self.monitor_activo and self.ser and self.ser.is_open:
+            try:
+                if self.ser.in_waiting > 0:
+                    chunk = self.ser.read(self.ser.in_waiting)
+                    limpio = self.limpiar_texto(chunk.decode('utf-8', errors='ignore'))
+                    # Insertamos directo sin salto de linea estricto para respetar el espaciado de arranque de linux
+                    self.textbox_consola.insert("end", limpio)
+                    self.textbox_consola.see("end")
+            except Exception:
+                break
+            time.sleep(0.05)
+
     # ================= LOGICA SERIAL Y DE TEXTO =================
     def enviar_y_leer(self, cmd, delay=1.0):
-        
+        if self.monitor_activo:
+            self.log("\n[ERROR] Apaga primero el Modo Monitor (Botón Rojo Izquierdo) antes de inyectar comandos.")
+            return ""
+            
         # --- 1. Actualizar "Plantallita Mágica de Comandos en vivo" ---
         comando_para_mostrar = "[ENTER]" if cmd == "" else f"> {cmd}"
         self.textbox_comandos.insert("end", comando_para_mostrar + "\n")
@@ -278,7 +323,9 @@ class ValidadorApp(ctk.CTk):
             resp_ip = self.enviar_y_leer("ifconfig eth0", delay=0.5)
             ip_match = re.search(r'inet\s+(?:addr:)?(\d+\.\d+\.\d+\.\d+)', resp_ip)
             if ip_match:
-                self.lbl_ip.configure(text=f"IP (eth0): {ip_match.group(1)}")
+                self.lbl_ip.configure(text=f"IP (eth0): {ip_match.group(1)}", text_color="white")
+            else:
+                self.lbl_ip.configure(text="IP (eth0): NO DETECTADA ❌", text_color="#EF4444")
             
             self.enviar_y_leer("cd /home/pds", delay=0.5)
             listado_ll = self.enviar_y_leer("ll", delay=1.0)
@@ -302,10 +349,18 @@ class ValidadorApp(ctk.CTk):
             
             v_max_str = max(v_nums, key=lambda x: x[0])[1] if v_nums else "--"
 
-            self.lbl_v_max.configure(text=f"Versión Alta (v_): {v_max_str}")
-            self.lbl_ok.configure(text=f"Estado OK_ : {ok_str}", text_color="green" if ok_str != "--" else "white")
-            self.lbl_no.configure(text=f"Estado NO_ : {no_str}", text_color="red" if no_str != "--" else "white")
-            self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
+            self.lbl_v_max.configure(text=f"Versión Alta: {v_max_str}")
+            if v_max_str == "--":
+                self.lbl_v_max.configure(text="Versión Alta: NO DETECTADA ❌", text_color="#EF4444")
+                
+            self.lbl_ok.configure(text=f"OK_ : {ok_str}", text_color="green" if ok_str != "--" else "white")
+            
+            if no_str == "--":
+                self.lbl_no.configure(text="NO_ : AUSENTE ❌", text_color="#EF4444")
+            else:
+                self.lbl_no.configure(text=f"NO_ : {no_str}", text_color="red")
+                
+            self.lbl_check.configure(text=f"CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
             salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             
