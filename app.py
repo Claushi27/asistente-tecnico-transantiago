@@ -166,21 +166,21 @@ class ValidadorApp(ctk.CTk):
         
         self.ser.write((cmd + "\n").encode('utf-8', errors='ignore'))
         
-        time.sleep(delay) # Espera inicial
+        # Eliminada espera 'delay' (time.sleep) aquí. Previene que Windows sobrescriba 
+        # su pequeño buffer UART original si el hardware responde muy rápido.
         
         output = b""
+        tiempo_arranque = time.time()
+        timeout_inactividad = 3.0 # Segundos de inactividad de red para morir
         
-        # Bucle de Bloques Nativos Rápido
+        # Bucle de Drenaje Ultharrápido
         while True:
-            chunk = self.ser.read(4096)
-            if chunk:
-                output += chunk
+            if self.ser.in_waiting > 0:
+                output += self.ser.read(self.ser.in_waiting)
+                tiempo_arranque = time.time() # Refrescar latido (sigue vivo)
                 
                 # Caza Inteligente de Prompt Estricto:
-                # Comprobar si el texto FINAL que acaba de llegar tiene un "#"
                 if output.endswith(b"#") or output.endswith(b"# ") or output.endswith(b"~#") or output.endswith(b"~# "):
-                    # Extraer SOLO los ultimos 120 caracteres para buscar la firma "root@". 
-                    # Esto evita falsos positivos con el comando "tail" original.
                     cola = output[-120:]
                     if b"root@" in cola:
                         time.sleep(0.05)
@@ -188,7 +188,11 @@ class ValidadorApp(ctk.CTk):
                             output += self.ser.read(self.ser.in_waiting)
                         break 
             else:
-                break # Timeout nativo en caso de fallos físicos
+                # Si pasa mucho tiempo sin recibir ni un byte, abortar (Corte de emergencia o comando colgado)
+                if time.time() - tiempo_arranque > timeout_inactividad:
+                    break
+            
+            time.sleep(0.02) # Respirar microsegundos
                 
         salida_limpia = self.limpiar_texto(output.decode('utf-8', errors='ignore'))
         
@@ -208,8 +212,15 @@ class ValidadorApp(ctk.CTk):
             if self.ser and self.ser.is_open:
                 self.ser.close()
             # Validador transantiago usa tipicamente 115200 baudios en su puerto consola
-            # Usar un timeout normal de 2s ya que nuestro Bucle ruteador detectará todo a tiempo
-            self.ser = serial.Serial(puerto, 115200, timeout=2)
+            self.ser = serial.Serial(puerto, 115200, timeout=1)
+            
+            # Ampliar el buffer nativo de Windows (Rx) a 1 MB para evitar que los comandos
+            # masivos desborden la memoria y borren los logs más antiguos del tail.
+            try:
+                self.ser.set_buffer_size(rx_size=1048576)
+            except Exception:
+                pass
+                
             self.log(f"\n[+] Abierto puerto FÍSICO: {puerto}")
             time.sleep(0.5)
 
@@ -274,7 +285,7 @@ class ValidadorApp(ctk.CTk):
             self.lbl_no.configure(text=f"Estado NO_ : {no_str}", text_color="red" if no_str != "--" else "white")
             self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
-            salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
+            salida_log = self.enviar_y_leer("tail -100 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             if "SAM COLD RESET" in salida_log:
                 self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
             else:
