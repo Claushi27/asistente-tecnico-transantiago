@@ -70,13 +70,15 @@ class ValidadorApp(ctk.CTk):
         self.frame_der.grid(row=0, column=1, padx=(0, 20), pady=20, sticky="nsew")
 
         # RECUADRO DE COMANDO ACTUAL (Panel Arriba-Derecha)
-        self.frame_comando = ctk.CTkFrame(self.frame_der, fg_color="#1E293B", corner_radius=8, height=60)
+        self.frame_comando = ctk.CTkFrame(self.frame_der, fg_color="#0F172A", border_width=2, border_color="#38BDF8", corner_radius=8, height=120)
         self.frame_comando.pack(pady=(20, 10), padx=20, fill="x")
         self.frame_comando.pack_propagate(False)
         
-        ctk.CTkLabel(self.frame_comando, text="COMANDO EN EJECUCIÓN (VIVO):", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray").pack(pady=(5,0), anchor="w", padx=10)
-        self.lbl_comando_actual = ctk.CTkLabel(self.frame_comando, text="[Esperando instrucción...]", font=ctk.CTkFont(family="Consolas", size=16, weight="bold"), text_color="#38BDF8")
-        self.lbl_comando_actual.pack(pady=(0, 5), anchor="w", padx=10)
+        ctk.CTkLabel(self.frame_comando, text="⚡ TERMINAL DE COMANDOS EN VIVO", font=ctk.CTkFont(size=12, weight="bold"), text_color="#38BDF8").pack(pady=(5,0), anchor="w", padx=10)
+        
+        self.textbox_comandos = ctk.CTkTextbox(self.frame_comando, height=80, fg_color="transparent", text_color="#A7F3D0", font=ctk.CTkFont(family="Consolas", size=14, weight="bold"))
+        self.textbox_comandos.pack(pady=(5, 5), padx=10, fill="both", expand=True)
+        self.textbox_comandos.insert("end", "[Esperando instrucción...]\n")
 
         # BOTONES
         self.btn_escanear = ctk.CTkButton(self.frame_der, text="🔄 1. Conectar y Analizar Data", height=50, command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
@@ -111,8 +113,9 @@ class ValidadorApp(ctk.CTk):
     def enviar_y_leer(self, cmd, delay=1.0):
         
         # --- 1. Actualizar "Plantallita Mágica de Comandos en vivo" ---
-        comando_para_mostrar = "[Presionando ENTER]" if cmd == "" else f"> {cmd}"
-        self.lbl_comando_actual.configure(text=comando_para_mostrar)
+        comando_para_mostrar = "[ENTER]" if cmd == "" else f"> {cmd}"
+        self.textbox_comandos.insert("end", comando_para_mostrar + "\n")
+        self.textbox_comandos.see("end")
         self.update_idletasks() # Forzar refresco visual inmediato
 
         # --- 2. Flujo de Simulación (Para pruebas puras en PC casa) ---
@@ -296,12 +299,15 @@ class ValidadorApp(ctk.CTk):
         carpetas_ids = []
         for linea in salida_ll.split('\n'):
             linea = linea.strip()
-            arr = linea.split()
-            if arr:
-                # Quitar la barra inclinada si la tiene
-                nombre = arr[-1].replace("/", "") 
-                if nombre.isdigit():
-                    carpetas_ids.append(int(nombre))
+            # Asegurarse de que la línea corresponde a un directorio (empieza con 'd')
+            # Esto evita el error de atrapar la línea inicial 'total 1580'
+            if linea.startswith('d'):
+                arr = linea.split()
+                if arr:
+                    # Quitar la barra inclinada si la tiene
+                    nombre = arr[-1].replace("/", "") 
+                    if nombre.isdigit():
+                        carpetas_ids.append(int(nombre))
         
         if not carpetas_ids:
             self.log("[X] No se encontraron carpetas numeradas (0, 1... 21) en trx.")
