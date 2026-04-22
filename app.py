@@ -89,15 +89,29 @@ class ValidadorApp(ctk.CTk):
 
         self.btn_reparar = ctk.CTkButton(self.frame_der, text="🗑️ Eliminar NO y Reiniciar", height=40, fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
         self.btn_reparar.pack(pady=10, padx=20, fill="x")
+        
+        self.btn_reinicio = ctk.CTkButton(self.frame_der, text="🔄 Forzar Reinicio (ngreboot)", height=40, fg_color="#475569", hover_color="#334155", command=self.pedir_confirmacion_reinicio)
+        self.btn_reinicio.pack(pady=10, padx=20, fill="x")
 
         self.btn_trx = ctk.CTkButton(self.frame_der, text="💳 Extraer Transacción Reciente", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
         self.btn_trx.pack(pady=10, padx=20, fill="x")
 
         self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
-        self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
+        self.label_terminal.pack(anchor="w", padx=20, pady=(5, 0))
 
-        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=130, font=ctk.CTkFont(family="Consolas", size=12))
-        self.textbox_consola.pack(padx=20, pady=(5, 20), fill="both", expand=True)
+        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=120, font=ctk.CTkFont(family="Consolas", size=12))
+        self.textbox_consola.pack(padx=20, pady=(5, 10), fill="both", expand=True)
+
+        # RECUADRO DE COMANDO MANUAL DIRECTO (Evita usar PuTTY totalmente)
+        self.frame_manual = ctk.CTkFrame(self.frame_der, fg_color="transparent")
+        self.frame_manual.pack(pady=(0, 20), padx=20, fill="x")
+        
+        self.entry_manual = ctk.CTkEntry(self.frame_manual, placeholder_text="Escribe un comando personalizado aquí (Ej: ls -la)...", font=ctk.CTkFont(family="Consolas", size=13))
+        self.entry_manual.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.entry_manual.bind("<Return>", lambda event: self.arrancar_hilo(self.enviar_comando_manual))
+        
+        self.btn_manual = ctk.CTkButton(self.frame_manual, text="📤 Enviar", width=100, fg_color="#4F46E5", hover_color="#4338CA", command=lambda: self.arrancar_hilo(self.enviar_comando_manual))
+        self.btn_manual.pack(side="right")
 
     def log(self, texto):
         self.textbox_consola.insert("end", texto + "\n")
@@ -253,6 +267,29 @@ class ValidadorApp(ctk.CTk):
         
         self.enviar_y_leer("ngc --stop daemon/generador_partida", delay=1.0)
         self.log("[+] Comando detener enviado. Revisa confirmación visual.")
+
+    def pedir_confirmacion_reinicio(self):
+        resp = messagebox.askyesno("CONFIRMACIÓN", "¿Estás seguro que deseas enviar el comando ngreboot para reiniciar el equipo?")
+        if resp:
+            self.arrancar_hilo(self.ejecutar_reinicio_real)
+
+    def ejecutar_reinicio_real(self):
+        self.log("\n[!] Forzando Reinicio Térmico (ngreboot)...")
+        self.enviar_y_leer("ngreboot", delay=1.0)
+        if self.ser: self.ser.close()
+        self.log("[-] Apagado. Desconecta cable y espera que prenda físico.")
+
+    def enviar_comando_manual(self):
+        comando = self.entry_manual.get().strip()
+        if not comando: return
+        
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero para enviar comandos.")
+            return
+            
+        self.log(f"\n[-] MODO MANUAL INYECTÓ COMANDO:")
+        self.enviar_y_leer(comando, delay=1.0)
+        self.entry_manual.delete(0, "end")
 
     def pedir_confirmacion_reparar(self):
         if not self.target_no_version or not self.target_no_version.lower().startswith("no_"):
