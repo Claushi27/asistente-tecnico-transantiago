@@ -285,15 +285,28 @@ class ValidadorApp(ctk.CTk):
             except Exception:
                 pass
                 
-            self.log(f"\n{'='*55}\n[✅] CONEXIÓN ESTABLECIDA CON ÉXITO\n[✅] Equipo listo y escuchando en {puerto}\n{'='*55}")
-            
             # Limpiar rastro de versiones anteriores visualmente al conectar un equipo nuevo
             self.lbl_id.configure(text="ID VAL: Escaneando...")
             time.sleep(0.5)
 
+            # --- TEST VITALIDAD FÍSICA ---
+            self.log("[⏳] Comprobando pulso eléctrico de la placa...")
+            resp_vital = self.enviar_y_leer("", delay=0.5)
+            
+            # Si PySerial no extrae texto en su tiempo de espera, la placa esta muerta o desconectada.
+            if not resp_vital.strip():
+                self.log(f"\n{'='*55}\n[❌] ERROR ELÉCTRICO DE COMUNICACIÓN \n[❌] El puerto en Windows abrió, pero la Placa NO RESPONDIÓ.\n{'='*55}")
+                self.log(" -> CAUSA 1: El cable de datos está físicamente desconectado de la placa.")
+                self.log(" -> CAUSA 2: El Validador está apagado (sin energía).")
+                self.log(" -> CAUSA 3: Los cables internos rotos (RX/TX muertos).\n")
+                if self.ser and self.ser.is_open:
+                    self.ser.close()
+                return False
+                
+            self.log(f"\n{'='*55}\n[✅] LINK ELÉCTRICO ESTABLECIDO CON ÉXITO\n[✅] Equipo detectado vivo y latiendo en {puerto}\n{'='*55}")
+
             # Presionar enter a ver si pide login 
-            resp = self.enviar_y_leer("", delay=0.5)
-            if "login:" in resp.lower() or "root" not in resp:
+            if "login:" in resp_vital.lower() or "root" not in resp_vital.lower():
                 self.log("[+] Enviando credenciales root...")
                 self.enviar_y_leer("root", delay=0.5)
                 self.enviar_y_leer("mesdk002", delay=1.0)
