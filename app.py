@@ -161,9 +161,19 @@ class ValidadorApp(ctk.CTk):
         if not self.ser or not self.ser.is_open:
             return ""
         self.ser.write((cmd + "\n").encode('utf-8', errors='ignore'))
-        time.sleep(delay)
-        output = self.ser.read_all().decode('utf-8', errors='ignore')
-        salida_limpia = self.limpiar_texto(output)
+        
+        time.sleep(delay) # Espera inicial
+        
+        output = b""
+        # Bucle de drenaje: Sigue leyendo si el validador sigue "vomitando" datos pesados (Como tail -200)
+        while True:
+            if self.ser.in_waiting > 0:
+                output += self.ser.read(self.ser.in_waiting)
+                time.sleep(0.2) # Damos chance a que el puerto serial reciba más fragmentos
+            else:
+                break
+                
+        salida_limpia = self.limpiar_texto(output.decode('utf-8', errors='ignore'))
         
         self.log(f"> {cmd}\n{salida_limpia}")
         
