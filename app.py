@@ -166,11 +166,18 @@ class ValidadorApp(ctk.CTk):
         
         output = b""
         intentos_vacio = 0
-        # Bucle de drenaje robusto: Tolera micro-pausas en la transmisión
-        while intentos_vacio < 4: # Se rendirá solo si hay silencio absoluto por 0.4 segundos
+        
+        # Super-Bucle de drenaje: Tolera hasta 1.5 segundos de lag, o corta perfecto si ve el Prompt de Linux
+        while intentos_vacio < 15: 
             if self.ser.in_waiting > 0:
                 output += self.ser.read(self.ser.in_waiting)
-                intentos_vacio = 0 # Reiniciar el contador porque llegó texto fresco
+                intentos_vacio = 0 
+                
+                # Caza de Prompt Inteligente: Si el final del bloque dice "root@" y termina en "#", el comando terminó.
+                if b"root@" in output and b"#" in output[-15:]:
+                    time.sleep(0.1) # Drenaje final por si acaso
+                    output += self.ser.read(self.ser.in_waiting)
+                    break 
             else:
                 intentos_vacio += 1
             time.sleep(0.1)
