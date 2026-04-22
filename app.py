@@ -10,22 +10,22 @@ import traceback
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# Regex para limpiar la basura visual de la consola Linux (colores ANSI)
+# Regex para borrar colores de Linux ANSI
 ansi_escape = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 class ValidadorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Ventana principal
         self.title("Asistente Validador Transantiago - Producción")
-        self.geometry("1000x700")
+        self.geometry("1050x750")
         
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        self.ser = None # Conector Serial
-        self.target_no_version = None # Guardará la carpeta no_ a borrar
+        self.ser = None 
+        self.target_no_version = None 
+        self.simulacion_en_carpeta_21 = False
 
         self._crear_interfaz()
 
@@ -59,17 +59,26 @@ class ValidadorApp(ctk.CTk):
         self.lbl_sam = ctk.CTkLabel(self.frame_izq, text="SAM COLD RESET: --", font=ctk.CTkFont(size=14, weight="bold"), fg_color="gray", corner_radius=5)
         self.lbl_sam.pack(pady=20, ipadx=10, ipady=5)
 
-        # Combo para seleccionar puerto COM
         self.lbl_com = ctk.CTkLabel(self.frame_izq, text="Seleccionar Puerto Serial:")
         self.lbl_com.pack(side="bottom", pady=(0, 5))
-        self.combo_com = ctk.CTkComboBox(self.frame_izq, values=["SIMULADOR (Prueba Local)", "COM1", "COM2", "COM3", "COM4", "COM5"])
-        self.combo_com.set("COM1") # Por defecto real en producción
+        self.combo_com = ctk.CTkComboBox(self.frame_izq, values=["SIMULADOR (Prueba Local)", "COM1", "COM2", "COM3"])
+        self.combo_com.set("COM1") 
         self.combo_com.pack(side="bottom", pady=(0, 20))
 
         # ==================== FRAME DERECHO ====================
         self.frame_der = ctk.CTkFrame(self, corner_radius=10)
         self.frame_der.grid(row=0, column=1, padx=(0, 20), pady=20, sticky="nsew")
 
+        # RECUADRO DE COMANDO ACTUAL (Panel Arriba-Derecha)
+        self.frame_comando = ctk.CTkFrame(self.frame_der, fg_color="#1E293B", corner_radius=8, height=60)
+        self.frame_comando.pack(pady=(20, 10), padx=20, fill="x")
+        self.frame_comando.pack_propagate(False)
+        
+        ctk.CTkLabel(self.frame_comando, text="COMANDO EN EJECUCIÓN (VIVO):", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray").pack(pady=(5,0), anchor="w", padx=10)
+        self.lbl_comando_actual = ctk.CTkLabel(self.frame_comando, text="[Esperando instrucción...]", font=ctk.CTkFont(family="Consolas", size=16, weight="bold"), text_color="#38BDF8")
+        self.lbl_comando_actual.pack(pady=(0, 5), anchor="w", padx=10)
+
+        # BOTONES
         self.btn_escanear = ctk.CTkButton(self.frame_der, text="🔄 1. Conectar y Analizar Data", height=50, command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
         self.btn_escanear.pack(pady=10, padx=20, fill="x")
 
@@ -82,10 +91,10 @@ class ValidadorApp(ctk.CTk):
         self.btn_trx = ctk.CTkButton(self.frame_der, text="💳 Extraer Transacción Reciente", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
         self.btn_trx.pack(pady=10, padx=20, fill="x")
 
-        self.label_terminal = ctk.CTkLabel(self.frame_der, text="Salida de Consola:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
         self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
 
-        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=150, font=ctk.CTkFont(family="Consolas", size=12))
+        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=130, font=ctk.CTkFont(family="Consolas", size=12))
         self.textbox_consola.pack(padx=20, pady=(5, 20), fill="both", expand=True)
 
     def log(self, texto):
@@ -98,31 +107,49 @@ class ValidadorApp(ctk.CTk):
     def arrancar_hilo(self, funcion):
         threading.Thread(target=funcion, daemon=True).start()
 
-    # ================= LOGICA SERIAL Y CONSOLA =================
+    # ================= LOGICA SERIAL Y DE TEXTO =================
     def enviar_y_leer(self, cmd, delay=1.0):
-        # MODO SIMULADOR (Para probar en casa)
+        
+        # --- 1. Actualizar "Plantallita Mágica de Comandos en vivo" ---
+        comando_para_mostrar = "[Presionando ENTER]" if cmd == "" else f"> {cmd}"
+        self.lbl_comando_actual.configure(text=comando_para_mostrar)
+        self.update_idletasks() # Forzar refresco visual inmediato
+
+        # --- 2. Flujo de Simulación (Para pruebas puras en PC casa) ---
         if self.combo_com.get() == "SIMULADOR (Prueba Local)":
-            time.sleep(delay / 2) # Falso delay de red
+            time.sleep(delay / 2)
             resp = ""
             if "ifconfig" in cmd: resp = "inet 10.38.64.10"
             elif cmd == "": resp = "root@cv4-28000001847:/home/pds#"
-            elif cmd == "ll" and "trx" not in cmd: resp = "drwx V_8\n-rw- ok_8\ndrwx v_12\ndrwx NO_12\n-rw- check_V_8"
+            # Si estamos dentro de la carpeta TRX y pedimos listado:
+            elif cmd == "ll" and self.simulacion_en_carpeta_21: resp = "-rw- 2145\n-rw- 2189\n-rw- 2100"
+            # Si estamos en ll general o pds:
+            elif cmd == "ll" and "trx" not in cmd: resp = "drwx V_8\n-rw- ok_8\ndrwx v_12\ndrwx NO_12\n-rw- check_V_8\n-rw- infoval_07401847.csv"
+            # Si estamos pidiendo la lista de directorios TRX principales
+            elif "trx" in cmd and "ll" in cmd: resp = "drwxr-xr-x 0/\ndrwxr-xr-x 1/\ndrwxr-xr-x 21/\n-rw- idx_2800.idx"
             elif "tail" in cmd: resp = "INFO log init\nSAM COLD RESET\nWARN low disk"
             elif "rm " in cmd: resp = ""
-            elif "trx" in cmd and "ll" in cmd: resp = "drwx 1\ndrwx 21\n-rw- idx_21_07401847_2026.idx"
-            else: resp = f"Comando '{cmd}'."
+            elif "cd 21" in cmd: 
+                self.simulacion_en_carpeta_21 = True
+                resp = ""
+            elif "cd" in cmd:
+                self.simulacion_en_carpeta_21 = False
+                resp = ""
+            else: resp = f"Ejecución simulada."
             
             self.log(f"> {cmd}\n{resp}")
             return resp
 
-        # MODO PRODUCCIÓN REAL (PySerial)
+        # --- 3. Flujo Real PySerial hacia el Validador Físico ---
         if not self.ser or not self.ser.is_open:
             return ""
         self.ser.write((cmd + "\n").encode('utf-8', errors='ignore'))
         time.sleep(delay)
         output = self.ser.read_all().decode('utf-8', errors='ignore')
         salida_limpia = self.limpiar_texto(output)
+        
         self.log(f"> {cmd}\n{salida_limpia}")
+        
         return salida_limpia
 
     def abrir_conexion(self):
@@ -130,26 +157,27 @@ class ValidadorApp(ctk.CTk):
             puerto = self.combo_com.get()
             
             if puerto == "SIMULADOR (Prueba Local)":
-                self.log("[+] MODO SIMULADOR ACTIVADO. Emulando consola Linux de validador...")
+                self.log("\n[+] MODO SIMULADOR ACTIVADO. Emulando comandos locales...")
+                self.simulacion_en_carpeta_21 = False
                 return True
                 
             if self.ser and self.ser.is_open:
                 self.ser.close()
             # Validador transantiago usa tipicamente 115200 baudios en su puerto consola
             self.ser = serial.Serial(puerto, 115200, timeout=2)
-            self.log(f"\n[+] Abierto puerto {puerto}")
+            self.log(f"\n[+] Abierto puerto FÍSICO: {puerto}")
             time.sleep(0.5)
 
-            # Presionar enter a ver si pide login o tira el prompt
+            # Presionar enter a ver si pide login 
             resp = self.enviar_y_leer("", delay=0.5)
             if "login:" in resp.lower() or "root" not in resp:
-                self.log("[+] Enviando credenciales de root...")
+                self.log("[+] Enviando credenciales root...")
                 self.enviar_y_leer("root", delay=0.5)
                 self.enviar_y_leer("mesdk002", delay=1.0)
             
             return True
         except Exception as e:
-            self.log(f"[ERROR] No se pudo conectar a {puerto}: {e}")
+            self.log(f"[ERROR CRÍTICO] No se pudo conectar a {puerto}. Verificá que no esté el PuTTY agarrando el puerto.\nDetalle: {e}")
             return False
 
     # ================= FLUJOS PRINCIPALES =================
@@ -159,26 +187,24 @@ class ValidadorApp(ctk.CTk):
             return
         
         try:
-            # 1. Obtener ID del prompt
-            resp = self.enviar_y_leer("", delay=0.5)
-            # Buscamos los ultimos 4 digitos antes de los dospuntos o arrobas: ej root@cv4-28000001847
-            id_match = re.search(r'280+(\d{4})(?!\d)', resp)
-            if id_match:
-                self.lbl_id.configure(text=f"ID Validador: {id_match.group(1)}", text_color="green")
+            # 1. Obtener ID (AMID Seguro) desde /home/pds/btransa
+            self.enviar_y_leer("cd /home/pds/btransa", delay=0.5)
+            salida_btransa = self.enviar_y_leer("ll", delay=1.0)
+            
+            amid_match = re.search(r'infoval_(\d+)\.csv', salida_btransa)
+            if amid_match:
+                self.lbl_id.configure(text=f"ID Validador: {amid_match.group(1)}", text_color="#00FFAA")
             else:
-                self.lbl_id.configure(text="ID Validador: --")
+                self.lbl_id.configure(text="ID Validador: NO ENCONTRADO", text_color="red")
 
-            # 2. Revisar IP eth0 (Mejorado para buscar ips limpias tambien)
             resp_ip = self.enviar_y_leer("ifconfig eth0", delay=0.5)
             ip_match = re.search(r'inet\s+(?:addr:)?(\d+\.\d+\.\d+\.\d+)', resp_ip)
             if ip_match:
                 self.lbl_ip.configure(text=f"IP (eth0): {ip_match.group(1)}")
             
-            # 3. Leer Versiones
             self.enviar_y_leer("cd /home/pds", delay=0.5)
             listado_ll = self.enviar_y_leer("ll", delay=1.0)
             
-            # Parsear resultados insensible a MAYUSCULAS
             v_nums = []
             ok_str, no_str, check_str = "--", "--", "--"
             self.target_no_version = None
@@ -192,11 +218,10 @@ class ValidadorApp(ctk.CTk):
                     ok_str = palabra
                 elif p_lower.startswith("no_"):
                     no_str = palabra
-                    self.target_no_version = palabra # Guardamos EXACTO para borrarlo bien
+                    self.target_no_version = palabra 
                 elif p_lower.startswith("check_"):
                     check_str = palabra
             
-            # Seleccionar el v_ más alto si existen varios
             v_max_str = max(v_nums, key=lambda x: x[0])[1] if v_nums else "--"
 
             self.lbl_v_max.configure(text=f"Versión Alta (v_): {v_max_str}")
@@ -204,7 +229,6 @@ class ValidadorApp(ctk.CTk):
             self.lbl_no.configure(text=f"Estado NO_ : {no_str}", text_color="red" if no_str != "--" else "white")
             self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
-            # 4. Logs Mval
             salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             if "SAM COLD RESET" in salida_log:
                 self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
@@ -212,89 +236,112 @@ class ValidadorApp(ctk.CTk):
                 self.lbl_sam.configure(text="SAM COLD RESET: OK (No hay error)", fg_color="green", text_color="white")
 
             self.log("\n[=========== ESCANEO FINALIZADO ===========]")
+            
+            if self.target_no_version:
+                self.log(f"[!] IMPORTANTE: Puedes pulsar el Botón Rojo para destruir ({self.target_no_version}) de forma segura.")
         
         except Exception as e:
             self.log(f"[ERROR EXCEPCIÓN] {e}")
 
     def ejecutar_detener(self):
         if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
-            self.log("[ERROR] Ejecuta la conexión (Conectar y Analizar Data) primero.")
+            self.log("[ERROR] Conecta primero.")
             return
         
-        self.log("\n[-] Enviando comando para DETENER GENERADOR...")
         self.enviar_y_leer("ngc --stop daemon/generador_partida", delay=1.0)
-        self.log("[+] Comando enviado exitosamente.")
+        self.log("[+] Comando detener enviado. Revisa confirmación visual.")
 
     def pedir_confirmacion_reparar(self):
-        # Escudo UI para confirmación del comando a ejecutar
         if not self.target_no_version or not self.target_no_version.lower().startswith("no_"):
-            messagebox.showwarning("Invalido", "El sistema NO reportó ninguna versión con error (NO_). No hay nada que borrar.")
+            messagebox.showwarning("Invalido", "El sistema detectó que tu equipo no tiene una versión NO_. No hay basura que borrar.")
             return
             
         comandos_str = f"1. rm -r /home/pds/{self.target_no_version}\n2. sync\n3. ngreboot"
         
-        # Leemos confirmación antes de la destrucción
-        resp = messagebox.askyesno("CONFIRMACIÓN DE COMANDOS CRÍTICOS", f"¿Estás completamente seguro de enviar esto al Validador?\n\n{comandos_str}")
+        # PREGUNTA SEGURIDAD
+        resp = messagebox.askyesno("CONFIRMACIÓN DE COMANDOS", f"Estás a punto de alterar el FileSystem del Validador.\n\nSe inyectará:\n{comandos_str}\n\n¿Estás de acuerdo?")
         if resp:
             self.arrancar_hilo(self.ejecutar_reparacion_real)
         else:
-            self.log("[+] Acción Cancelada por el Usuario.")
+            self.log("[+] Comando abortado por el usuario.")
 
     def ejecutar_reparacion_real(self):
-        # Esta es la ruta segura, corre en Hilo por detras despues de apretar YES
-        self.log(f"\n[!] PROCEDIENDO A HIGIENIZAR CARPETA: {self.target_no_version}")
+        self.log(f"\n[!] PROCEDIENDO A DESTRUIR CARPETA: {self.target_no_version}")
         self.enviar_y_leer(f"rm -r /home/pds/{self.target_no_version}", delay=1.0)
         
+        # Doble Check
         ll_post = self.enviar_y_leer("ll /home/pds", delay=1.0)
         if self.target_no_version in ll_post:
-            self.log(f"[!!!] FALLO: {self.target_no_version} sigue apareciendo en el LL. Puede requerir permisos sudo o estaba bloqueada.")
+            self.log(f"[!!!] No se borró {self.target_no_version}. Archivo protegido o comando rebotó.")
         else:
-            self.log(f"[+] BORRADO VERIFICADO: {self.target_no_version} fue eliminada. Sincronizando FS...")
+            self.log(f"[+] BORRADO VERIFICADO: Se destruyó completamente. Sincronizando...")
             
         self.enviar_y_leer("sync", delay=2.0)
-        self.log("[+] Forzando Reinicio (ngreboot)...")
+        self.log("[+] Forzando Reinicio Térmico (ngreboot)...")
         self.enviar_y_leer("ngreboot", delay=1.0)
         
         if self.ser: self.ser.close()
-        self.log("[-] Validador Cerrado. Espera a que prenda físicamente.")
+        self.log("[-] Apagado. Desconecta cable y espera que prenda físico.")
 
     def ejecutar_trx(self):
         if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
-            self.log("[ERROR] Ejecuta la conexión primero para abrir el COM.")
+            self.log("[ERROR] Conecta primero.")
             return
             
-        self.log("\n[-] BUSCANDO DIRECTORIO DE ÚLTIMA TRANSACCIÓN...")
+        self.log("\n[-] BUSCANDO CARPETAS GENERALES TRX...")
         self.enviar_y_leer("cd /home/pds/btransa/trx", delay=0.5)
         salida_ll = self.enviar_y_leer("ll", delay=1.0)
         
-        # Tu dijiste que las TRX (.idx) salen en el MISMO LL junto con las carpetas.
-        # Buscamos todas las palabras que sean idx_ algo
-        idx_archivos = []
+        # 1. Buscar entre todo el terminal los nombres de carpetas
+        carpetas_ids = []
         for linea in salida_ll.split('\n'):
             linea = linea.strip()
             arr = linea.split()
             if arr:
-                nombre = arr[-1]
-                if nombre.lower().startswith("idx_"):
-                    # Extraer el numero intermedio para comparar y sacar el maximo
-                    # ejemplo: idx_21_07401847_2026.idx
-                    try:
-                        partes = nombre.split('_')
-                        if len(partes) > 1 and partes[1].isdigit():
-                            num = int(partes[1])
-                            idx_archivos.append((num, nombre))
-                    except:
-                        pass
+                # Quitamos la barra lateral por si en ll salen como "21/" o "10/"
+                nombre = arr[-1].replace("/", "") 
+                if nombre.isdigit():
+                    carpetas_ids.append(int(nombre))
         
-        if idx_archivos:
-            # Ordenamos por numero y agarramos el mas alto (la mas nueva)
-            max_idx_nombre = max(idx_archivos, key=lambda x: x[0])[1]
-            self.log(f"\n[=============== TRX ENCONTRADO ===============]")
-            self.log(f"Último Archivo IDX Extraído:")
-            self.log(f"-> {max_idx_nombre}")
-            self.log(f"[==============================================]\n")
+        if not carpetas_ids:
+            self.log("[X] No se encontraron carpetas numeradas (0, 1... 21) en trx.")
+            return
+            
+        max_carpeta = str(max(carpetas_ids))
+        self.log(f"[+] La carpeta máxima encontrada es: {max_carpeta}")
+        
+        # 2. ENTRAR A ESA CARPETA
+        self.enviar_y_leer(f"cd {max_carpeta}", delay=0.5)
+        self.log(f"[-] Examinando interior de /{max_carpeta}/...")
+        salida_interior = self.enviar_y_leer("ll", delay=1.0)
+
+        # 3. Extraer el mayor número dentro (ej: 2100, 2189)
+        max_trx_val = -1
+        max_trx_nombre = ""
+        
+        for linea in salida_interior.split('\n'):
+            linea = linea.strip()
+            arr = linea.split()
+            if arr:
+                nom_arch = arr[-1]
+                # Extaremos todos los caracteres que sean un número en el nombre
+                digitos_encontrados = re.findall(r'\d+', nom_arch)
+                # Si encontró algún número (como '2100')
+                if digitos_encontrados:
+                    # Concatena en caso de que fuera ej: trans_2100.txt
+                    num_completo = int(''.join(digitos_encontrados))
+                    if num_completo > max_trx_val:
+                        max_trx_val = num_completo
+                        max_trx_nombre = nom_arch
+
+        if max_trx_nombre:
+            self.log(f"\n[=============== TRX IDENTIFICADA ===============]")
+            self.log(f"La transacción más reciente en la carpeta /{max_carpeta} es:")
+            self.log(f"-> {max_trx_nombre}")
+            self.log(f"Valor interno indexado: {max_trx_val}")
+            self.log(f"[================================================]\n")
         else:
-            self.log("[X] No se hallaron archivos idx_ en la carpeta raíz trx.")
+            self.log(f"[X] No se detectaron archivos de código numérico en /{max_carpeta}/")
 
 
 if __name__ == "__main__":
