@@ -93,13 +93,29 @@ class ValidadorApp(ctk.CTk):
         self.btn_reinicio = ctk.CTkButton(self.frame_der, text="🔄 Forzar Reinicio (ngreboot)", height=40, fg_color="#475569", hover_color="#334155", command=self.pedir_confirmacion_reinicio)
         self.btn_reinicio.pack(pady=10, padx=20, fill="x")
 
+        # --- SECCIÓN HERRAMIENTAS USB ---
+        self.frame_usb = ctk.CTkFrame(self.frame_der, fg_color="#1E293B", corner_radius=8)
+        self.frame_usb.pack(pady=5, padx=20, fill="x")
+        
+        ctk.CTkLabel(self.frame_usb, text="💾 RESPALDO FÍSICO A PENDRIVE USB", font=ctk.CTkFont(size=11, weight="bold"), text_color="#38BDF8").pack(pady=(10,2))
+        
+        self.entry_ruta_usb = ctk.CTkEntry(self.frame_usb, placeholder_text="Ruta a copiar (Ej: /home)", font=ctk.CTkFont(family="Consolas", size=13))
+        self.entry_ruta_usb.pack(padx=15, pady=5, fill="x")
+        self.entry_ruta_usb.insert(0, "/home") # Valor por defecto dinámico
+        
+        self.btn_usb_copiar = ctk.CTkButton(self.frame_usb, text="1. Montar USB y Copiar", fg_color="#2563EB", hover_color="#1D4ED8", command=lambda: self.arrancar_hilo(self.rutina_copiar_usb))
+        self.btn_usb_copiar.pack(pady=2, padx=15, fill="x")
+        
+        self.btn_usb_expulsar = ctk.CTkButton(self.frame_usb, text="2. Desmontar Seguro", fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
+        self.btn_usb_expulsar.pack(pady=(2,10), padx=15, fill="x")
+
         self.btn_trx = ctk.CTkButton(self.frame_der, text="💳 Extraer Transacción Reciente", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
         self.btn_trx.pack(pady=10, padx=20, fill="x")
 
         self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
         self.label_terminal.pack(anchor="w", padx=20, pady=(5, 0))
 
-        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=120, font=ctk.CTkFont(family="Consolas", size=12))
+        self.textbox_consola = ctk.CTkTextbox(self.frame_der, height=100, font=ctk.CTkFont(family="Consolas", size=12))
         self.textbox_consola.pack(padx=20, pady=(5, 10), fill="both", expand=True)
 
         # RECUADRO DE COMANDO MANUAL DIRECTO (Evita usar PuTTY totalmente)
@@ -224,7 +240,10 @@ class ValidadorApp(ctk.CTk):
             except Exception:
                 pass
                 
-            self.log(f"\n[+] Abierto puerto FÍSICO: {puerto}")
+            self.log(f"\n{'='*55}\n[✅] CONEXIÓN ESTABLECIDA CON ÉXITO\n[✅] Equipo listo y escuchando en {puerto}\n{'='*55}")
+            
+            # Limpiar rastro de versiones anteriores visualmente al conectar un equipo nuevo
+            self.lbl_id.configure(text="ID VAL: Escaneando...")
             time.sleep(0.5)
 
             # Presionar enter a ver si pide login 
@@ -289,8 +308,22 @@ class ValidadorApp(ctk.CTk):
             self.lbl_check.configure(text=f"Estado CHECK_ : {check_str}", text_color="orange" if check_str != "--" else "white")
 
             salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
-            if "SAM COLD RESET" in salida_log:
+            
+            sam_error = "SAM COLD RESET" in salida_log
+            medio_nulo = "Medio de acceso de virtual nulo" in salida_log or "El archivo ./etc/Hal" in salida_log
+            
+            if sam_error and medio_nulo:
+                self.lbl_sam.configure(text="SAM / LECTOR NULO: HARDWARE DAÑADO", fg_color="orange", text_color="black")
+                self.log("\n>>> [ALERTA DE DIAGNÓSTICO AVANZADO] <<<")
+                self.log("Se detectó un 'SAM COLD RESET' en el historial, PERO el error más actual")
+                self.log("es 'Medio de acceso virtual nulo' o falla de archivos de Hardware HAL.")
+                self.log("CAUSA: El cable IDE/Flex de la placa al lector está suelto o el lector murió.")
+                self.log("ACCIÓN: Un comando de reparación NO arreglará esto. Ve a REVISIÓN FÍSICA.")
+                self.log(">>> -------------------------------- <<<\n")
+            elif sam_error:
                 self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
+                self.log("\n[!] ALERTA CRITICA: 'SAM COLD RESET' DETECTADO (Error lógico puro).")
+                self.log(">>> PROCEDE CON REPARACIÓN Y REINICIO.")
             else:
                 self.lbl_sam.configure(text="SAM COLD RESET: OK (No hay error)", fg_color="green", text_color="white")
 
@@ -340,6 +373,78 @@ class ValidadorApp(ctk.CTk):
         self.log(f"\n[-] MODO MANUAL INYECTÓ COMANDO:")
         self.enviar_y_leer(comando, delay=1.0)
         self.entry_manual.delete(0, "end")
+
+    def enviar_lectura_larga(self, cmd, timeout_mins=8):
+        """Función especializada que ignora el timeout de inactividad de 3s y espera la completitud de comandos lentos."""
+        if not self.ser or not self.ser.is_open:
+            return ""
+            
+        self.ser.reset_input_buffer()
+        self.ser.write((cmd + "\n").encode('utf-8', errors='ignore'))
+        
+        output = b""
+        tiempo_arranque = time.time()
+        timeout_absoluto = timeout_mins * 60
+        
+        while True:
+            if self.ser.in_waiting > 0:
+                output += self.ser.read(self.ser.in_waiting)
+                
+                # Caza Inteligente de Prompt Estricto
+                if output.endswith(b"#") or output.endswith(b"# ") or output.endswith(b"~#") or output.endswith(b"~# "):
+                    cola = output[-120:]
+                    if b"root@" in cola:
+                        time.sleep(0.1)
+                        if self.ser.in_waiting > 0:
+                            output += self.ser.read(self.ser.in_waiting)
+                        break 
+                        
+            if time.time() - tiempo_arranque > timeout_absoluto:
+                self.log(f"[WARNING] Comando excedió el tiempo máximo de {timeout_mins} minutos.")
+                break
+            
+            time.sleep(0.05)
+            
+        return self.limpiar_texto(output.decode('utf-8', errors='ignore'))
+
+    def rutina_copiar_usb(self):
+        ruta_origen = self.entry_ruta_usb.get().strip()
+        if not ruta_origen:
+            self.log("[X] Error: Debes especificar una carpeta o archivo a respaldar.")
+            return
+            
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero al puerto COM.")
+            return
+
+        self.log(f"\n{'-'*40}\n[⏳] 1. Montando el Pendrive USB al sistema Linux...")
+        self.enviar_y_leer("mount /dev/sda1 /mnt", delay=1.0)
+        
+        amid_nombre = self.target_id if hasattr(self, 'target_id') and self.target_id else "0000X"
+        ruta_destino = f"/mnt/amid_{amid_nombre}"
+        
+        self.log(f"[⏳] 2. Iniciando COPIA desde '{ruta_origen}' hacia '{ruta_destino}'...")
+        self.log("[⚠️] EL PROGRAMA SE CONGELARÁ ESPERANDO QUE TERMINE, ALGUNAS CARPETAS PESAN MEGAS. SOLO ESPERA.")
+        
+        comando_copiar = f"cp -r {ruta_origen} {ruta_destino}"
+        
+        if self.combo_com.get() == "SIMULADOR (Prueba Local)":
+            time.sleep(3)
+            self.log(f"> {comando_copiar}\n[Simulador] Carpeta {ruta_origen} copiada virtualmente.")
+        else:
+            salida = self.enviar_lectura_larga(comando_copiar, timeout_mins=8)
+            self.log(f"> {comando_copiar}\n{salida}\n[✅] MEGA-COPIA FINALIZADA. Haz clic en 'Desmontar Seguro' ahora.")
+
+    def rutina_desmontar_usb(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            return
+            
+        self.log("\n[⏳] Aplicando sincronización de disco (sync)...")
+        self.enviar_y_leer("sync", delay=1.0)
+        
+        self.log("[⏳] Desmontando la unidad USB (/mnt)...")
+        self.enviar_y_leer("umount /mnt", delay=2.0)
+        self.log("[✅] ¡Extracción Segura Completada! Ya puedes retirar tu pendrive del validador de Sonda.")
 
     def pedir_confirmacion_reparar(self):
         if not self.target_no_version or not self.target_no_version.lower().startswith("no_"):
