@@ -27,6 +27,8 @@ class ValidadorApp(ctk.CTk):
         self.target_no_version = None 
         self.simulacion_en_carpeta_21 = False
         self.monitor_activo = False
+        self.comando_en_curso = False
+        self.vigia_iniciado = False
 
         self._crear_interfaz()
 
@@ -85,40 +87,48 @@ class ValidadorApp(ctk.CTk):
         self.textbox_comandos.pack(pady=(5, 5), padx=10, fill="both", expand=True)
         self.textbox_comandos.insert("end", "[Esperando instrucción...]\n")
 
-        # BATERÍA DE BOTONES COMPACTA (1 SOLO PANEL EN GRID MODO TETRIS)
-        self.frame_btn_grid = ctk.CTkFrame(self.frame_der, fg_color="transparent")
-        self.frame_btn_grid.pack(pady=5, padx=20, fill="x")
-        self.frame_btn_grid.columnconfigure((0, 1), weight=1)
+        # BATERÍA DE BOTONES COMPACTA (SISTEMA DE PESTAÑAS - Ahorra máximo espacio)
+        self.tabview = ctk.CTkTabview(self.frame_der, height=80)
+        self.tabview.pack(pady=5, padx=20, fill="x")
 
-        self.btn_escanear = ctk.CTkButton(self.frame_btn_grid, text="🔄 1. Conectar y Analizar Data", height=40, font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
-        self.btn_escanear.grid(row=0, column=0, padx=(0,5), pady=5, sticky="ew")
+        tab_core = self.tabview.add("1. Acciones Básicas")
+        tab_diag = self.tabview.add("2. Diagnóstico Técnico")
+        tab_usb = self.tabview.add("3. Extraer a USB")
 
-        self.btn_trx = ctk.CTkButton(self.frame_btn_grid, text="💳 Extraer Transacción (TRX)", height=40, fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
-        self.btn_trx.grid(row=0, column=1, padx=(5,0), pady=5, sticky="ew")
-
-        self.btn_reparar = ctk.CTkButton(self.frame_btn_grid, text="🗑️ Eliminar NO y Reiniciar", height=30, fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
-        self.btn_reparar.grid(row=1, column=0, padx=(0,5), pady=5, sticky="ew")
-
-        self.btn_detener = ctk.CTkButton(self.frame_btn_grid, text="⏹️ Detener Bucle (ngc stop)", height=30, fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
-        self.btn_detener.grid(row=1, column=1, padx=(5,0), pady=5, sticky="ew")
-
-        # --- SECCIÓN HERRAMIENTAS USB ULTRA-COMPACTA ---
-        self.frame_usb = ctk.CTkFrame(self.frame_der, fg_color="#1E293B", corner_radius=8)
-        self.frame_usb.pack(pady=0, padx=20, fill="x")
+        # --- Pestaña 1: CORE ---
+        tab_core.columnconfigure((0, 1, 2), weight=1)
+        self.btn_escanear = ctk.CTkButton(tab_core, text="🔄 Conectar y Analizar", font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
+        self.btn_escanear.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         
-        self.frame_usb.columnconfigure(0, weight=2)
-        self.frame_usb.columnconfigure(1, weight=1)
-        self.frame_usb.columnconfigure(2, weight=1)
+        self.btn_detener = ctk.CTkButton(tab_core, text="⏹️ Detener Reinicio", fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
+        self.btn_detener.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         
-        self.entry_ruta_usb = ctk.CTkEntry(self.frame_usb, placeholder_text="/home", font=ctk.CTkFont(family="Consolas", size=12), height=30)
-        self.entry_ruta_usb.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.btn_reparar = ctk.CTkButton(tab_core, text="🗑️ Eliminar NO y Reiniciar", fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
+        self.btn_reparar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # --- Pestaña 2: DIAGNOSTICO ---
+        tab_diag.columnconfigure((0, 1, 2), weight=1)
+        self.btn_trx = ctk.CTkButton(tab_diag, text="💳 Extraer TRX", fg_color="#059669", hover_color="#047857", command=lambda: self.arrancar_hilo(self.ejecutar_trx))
+        self.btn_trx.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        
+        self.btn_test_disco = ctk.CTkButton(tab_diag, text="💽 Estado del Disco", fg_color="#0284c7", hover_color="#0369a1", command=lambda: self.arrancar_hilo(self.ejecutar_test_disco))
+        self.btn_test_disco.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        
+        self.btn_test_red = ctk.CTkButton(tab_diag, text="🌐 Test de Red", fg_color="#7c3aed", hover_color="#5b21b6", command=lambda: self.arrancar_hilo(self.ejecutar_test_red))
+        self.btn_test_red.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # --- Pestaña 3: USB ---
+        tab_usb.columnconfigure(0, weight=2)
+        tab_usb.columnconfigure((1, 2), weight=1)
+        self.entry_ruta_usb = ctk.CTkEntry(tab_usb, placeholder_text="/home", font=ctk.CTkFont(family="Consolas", size=12))
+        self.entry_ruta_usb.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         self.entry_ruta_usb.insert(0, "/home")
         
-        self.btn_usb_copiar = ctk.CTkButton(self.frame_usb, text="Montar y Copiar", height=30, fg_color="#2563EB", hover_color="#1D4ED8", command=lambda: self.arrancar_hilo(self.rutina_copiar_usb))
-        self.btn_usb_copiar.grid(row=0, column=1, padx=5, pady=10, sticky="ew")
+        self.btn_usb_copiar = ctk.CTkButton(tab_usb, text="Montar y Copiar", fg_color="#2563EB", hover_color="#1D4ED8", command=lambda: self.arrancar_hilo(self.rutina_copiar_usb))
+        self.btn_usb_copiar.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         
-        self.btn_usb_expulsar = ctk.CTkButton(self.frame_usb, text="Desmontar", height=30, fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
-        self.btn_usb_expulsar.grid(row=0, column=2, padx=10, pady=10, sticky="ew")
+        self.btn_usb_expulsar = ctk.CTkButton(tab_usb, text="Desmontar Seguro", fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
+        self.btn_usb_expulsar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
         self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
         self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
@@ -190,6 +200,13 @@ class ValidadorApp(ctk.CTk):
             self.log("\n[ERROR] Apaga primero el Modo Monitor (Botón Rojo Izquierdo) antes de inyectar comandos.")
             return ""
             
+        self.comando_en_curso = True
+        try:
+            return self._enviar_y_leer_interno(cmd, delay)
+        finally:
+            self.comando_en_curso = False
+            
+    def _enviar_y_leer_interno(self, cmd, delay=1.0):
         # --- 1. Actualizar "Plantallita Mágica de Comandos en vivo" ---
         comando_para_mostrar = "[ENTER]" if cmd == "" else f"> {cmd}"
         self.textbox_comandos.insert("end", comando_para_mostrar + "\n")
@@ -304,6 +321,9 @@ class ValidadorApp(ctk.CTk):
                 return False
                 
             self.log(f"\n{'='*55}\n[✅] LINK ELÉCTRICO ESTABLECIDO CON ÉXITO\n[✅] Equipo detectado vivo y latiendo en {puerto}\n{'='*55}")
+
+            # Activar Vigía de fondo si no estaba corriendo
+            self.iniciar_vigia_fondo()
 
             # Presionar enter a ver si pide login 
             if "login:" in resp_vital.lower() or "root" not in resp_vital.lower():
@@ -444,6 +464,13 @@ class ValidadorApp(ctk.CTk):
 
     def enviar_lectura_larga(self, cmd, timeout_mins=8):
         """Función especializada que ignora el timeout de inactividad de 3s y espera la completitud de comandos lentos."""
+        self.comando_en_curso = True
+        try:
+            return self._enviar_lectura_larga_interno(cmd, timeout_mins)
+        finally:
+            self.comando_en_curso = False
+            
+    def _enviar_lectura_larga_interno(self, cmd, timeout_mins=8):
         if not self.ser or not self.ser.is_open:
             return ""
             
@@ -609,6 +636,61 @@ class ValidadorApp(ctk.CTk):
         else:
             self.log(f"[X] No se detectaron archivos de transaccion trx_ en la carpeta /{max_carpeta}/")
 
+    # ================= RUTINAS NUEVAS (VIGÍA Y DIAGNÓSTICO) =================
+    def ejecutar_test_disco(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+            
+        self.log("\n[⏳] Analizando estado de la memoria interna...")
+        salida = self.enviar_y_leer("df -h /home", delay=1.0)
+        
+        # Parseo simple para buscar el porcentaje de uso
+        if "100%" in salida or "99%" in salida or "98%" in salida or "97%" in salida:
+            self.log(f"\n[❌] ¡ALERTA CRÍTICA DE ALMACENAMIENTO! [❌]")
+            self.log("La carpeta /home está saturada al borde del colapso.")
+            self.log("Se recomienda eliminar carpetas NO_ o ejecutar una limpieza masiva.")
+        else:
+            self.log("\n[✅] Memoria Interna: Estado Saludable con espacio libre.")
+
+    def ejecutar_test_red(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+            
+        self.log("\n[⏳] Comprobando antenas móviles y conectividad al DNS global...")
+        salida = self.enviar_y_leer("ping -c 3 8.8.8.8", delay=2.5)
+        
+        if "3 packets transmitted, 3 received" in salida or "3 packets transmitted, 3 packets received" in salida:
+            self.log("\n[✅] EXITO: Módem 3G/4G operativo y conectado a Internet.")
+        elif "Network is unreachable" in salida or "100% packet loss" in salida:
+            self.log("\n[❌] FALLA DE RED: El validador NO tiene salida a Internet.")
+            self.log(" -> Posible fallo de SIM Card o chip Módem desconectado.")
+        else:
+            self.log("\n[⚠️] Estado Incierto. Revisa el log manualmente arriba.")
+
+    def iniciar_vigia_fondo(self):
+        if not self.vigia_iniciado:
+            self.vigia_iniciado = True
+            self.arrancar_hilo(self.rutina_vigia_fondo)
+
+    def rutina_vigia_fondo(self):
+        while True:
+            # Solo escuchamos si hay puerto abierto, nadie está mandando comandos 
+            # y el monitor manual morado NO está activo.
+            if self.ser and self.ser.is_open and not self.comando_en_curso and not self.monitor_activo:
+                try:
+                    if self.ser.in_waiting > 0:
+                        chunk = self.ser.read(self.ser.in_waiting)
+                        texto = chunk.decode('utf-8', errors='ignore')
+                        
+                        if "U-Boot" in texto or "Starting kernel" in texto or "% system/" in texto or "daemon/" in texto:
+                            self.lbl_id.configure(text="[ ⏳ MÁQUINA REINICIANDO / CARGANDO... ]", text_color="orange")
+                        elif "login:" in texto:
+                            self.lbl_id.configure(text="ID VAL: ESPERANDO LOGIN 🟢", text_color="green")
+                except Exception:
+                    pass
+            time.sleep(0.5)
 
 if __name__ == "__main__":
     app = ValidadorApp()
