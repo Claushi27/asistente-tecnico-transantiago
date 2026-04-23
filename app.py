@@ -169,7 +169,7 @@ class ValidadorApp(ctk.CTk):
             self.log("\n[+] MODO MONITOR APAGADO. El log vuelve a estar dedicado a respuesta de comandos.")
         else:
             if not self.ser or not self.ser.is_open:
-                exito = self.abrir_conexion()
+                exito = self.abrir_puerto_bruto()
                 if not exito: return
             
             self.monitor_activo = True
@@ -280,6 +280,19 @@ class ValidadorApp(ctk.CTk):
         self.log(f"> {cmd}\n{salida_limpia}")
         
         return salida_limpia
+
+    def abrir_puerto_bruto(self):
+        try:
+            puerto = self.combo_com.get()
+            if puerto == "SIMULADOR (Prueba Local)": return True
+            if self.ser and self.ser.is_open: self.ser.close()
+            self.ser = serial.Serial(puerto, 115200, timeout=1)
+            try: self.ser.set_buffer_size(rx_size=1048576)
+            except Exception: pass
+            return True
+        except Exception as e:
+            self.log(f"[ERROR CRÍTICO] No se pudo conectar a {puerto}: {e}")
+            return False
 
     def abrir_conexion(self):
         try:
