@@ -397,21 +397,30 @@ class ValidadorApp(ctk.CTk):
 
             salida_log = self.enviar_y_leer("tail -200 /home/pds/logs/Mval/Mval_archivolog.log", delay=1.5)
             
-            sam_error = "SAM COLD RESET" in salida_log
+            sam_cold = "SAM COLD RESET" in salida_log
+            sam_dump = "SAM_DumpSecretKey" in salida_log or "SAM no preparada" in salida_log
+            yml_error = "Error archivo Yml no encontrado" in salida_log
             medio_nulo = "Medio de acceso de virtual nulo" in salida_log or "El archivo ./etc/Hal" in salida_log
             
-            if sam_error and medio_nulo:
-                self.lbl_sam.configure(text="SAM / LECTOR NULO: HARDWARE DAÑADO", fg_color="orange", text_color="black")
+            if sam_cold and medio_nulo:
+                self.lbl_sam.configure(text="SAM / LECTOR NULO: CABLE/HARDWARE DAÑADO", fg_color="orange", text_color="black")
                 self.log("\n>>> [ALERTA DE DIAGNÓSTICO AVANZADO] <<<")
                 self.log("Se detectó un 'SAM COLD RESET' en el historial, PERO el error más actual")
                 self.log("es 'Medio de acceso virtual nulo' o falla de archivos de Hardware HAL.")
                 self.log("CAUSA: El cable IDE/Flex de la placa al lector está suelto o el lector murió.")
                 self.log("ACCIÓN: Un comando de reparación NO arreglará esto. Ve a REVISIÓN FÍSICA.")
                 self.log(">>> -------------------------------- <<<\n")
-            elif sam_error:
+            elif sam_dump:
+                self.lbl_sam.configure(text="SAM NO PREPARADA: ERROR DE LLAVES", fg_color="#8B5CF6", text_color="white")
+                self.log("\n[!] ALERTA CRÍTICA: ERROR DE LLAVES SAM_DumpSecretKey (6A 82).")
+                self.log(">>> La SAM responde eléctricamente pero no está autorizada o está virgen.")
+            elif sam_cold:
                 self.lbl_sam.configure(text="SAM COLD RESET: ALERTA ROJA", fg_color="red", text_color="white")
                 self.log("\n[!] ALERTA CRITICA: 'SAM COLD RESET' DETECTADO (Error lógico puro).")
                 self.log(">>> PROCEDE CON REPARACIÓN Y REINICIO.")
+            elif yml_error:
+                self.lbl_sam.configure(text="ERROR MREF: ARCHIVO YML AUSENTE", fg_color="#F43F5E", text_color="white")
+                self.log("\n[!] ALERTA DE SISTEMA: El validador reporta que le falta un archivo YML de configuración.")
             else:
                 self.lbl_sam.configure(text="SAM COLD RESET: OK (No hay error)", fg_color="green", text_color="white")
 
