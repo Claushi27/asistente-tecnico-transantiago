@@ -253,6 +253,8 @@ class ValidadorApp(ctk.CTk):
         output = b""
         tiempo_arranque = time.time()
         timeout_inactividad = 3.0 # Segundos de inactividad de red para morir
+        timeout_absoluto = 15.0 # Segundos maximos en caso de spam infinito
+        tiempo_inicio_absoluto = time.time()
         
         # Bucle de Drenaje Ultharrápido
         while True:
@@ -260,18 +262,31 @@ class ValidadorApp(ctk.CTk):
                 output += self.ser.read(self.ser.in_waiting)
                 tiempo_arranque = time.time() # Refrescar latido (sigue vivo)
                 
-                # Caza Inteligente de Prompt Estricto:
-                if output.endswith(b"#") or output.endswith(b"# ") or output.endswith(b"~#") or output.endswith(b"~# "):
-                    cola = output[-120:]
-                    if b"root@" in cola:
+                cola = output[-800:]
+                cola_lower = cola.lower()
+                
+                # Caza Inteligente de Prompt Estricto (Resiliente a Spam):
+                if b"root@" in cola:
+                    idx_root = cola.rfind(b"root@")
+                    if b"#" in cola[idx_root:]:
                         time.sleep(0.05)
                         if self.ser.in_waiting > 0:
                             output += self.ser.read(self.ser.in_waiting)
                         break 
+                
+                elif b"login:" in cola_lower or b"password:" in cola_lower:
+                    time.sleep(0.05)
+                    if self.ser.in_waiting > 0:
+                        output += self.ser.read(self.ser.in_waiting)
+                    break
             else:
                 # Si pasa mucho tiempo sin recibir ni un byte, abortar (Corte de emergencia o comando colgado)
                 if time.time() - tiempo_arranque > timeout_inactividad:
                     break
+                    
+            if time.time() - tiempo_inicio_absoluto > timeout_absoluto:
+                self.log("\n[⚠️] TIMEOUT ABSOLUTO (Posible spam infinito). Cortando lectura...")
+                break
             
             time.sleep(0.02) # Respirar microsegundos
                 
@@ -507,10 +522,11 @@ class ValidadorApp(ctk.CTk):
             if self.ser.in_waiting > 0:
                 output += self.ser.read(self.ser.in_waiting)
                 
-                # Caza Inteligente de Prompt Estricto
-                if output.endswith(b"#") or output.endswith(b"# ") or output.endswith(b"~#") or output.endswith(b"~# "):
-                    cola = output[-120:]
-                    if b"root@" in cola:
+                # Caza Inteligente de Prompt Estricto (Resiliente a Spam)
+                cola = output[-800:]
+                if b"root@" in cola:
+                    idx_root = cola.rfind(b"root@")
+                    if b"#" in cola[idx_root:]:
                         time.sleep(0.1)
                         if self.ser.in_waiting > 0:
                             output += self.ser.read(self.ser.in_waiting)
