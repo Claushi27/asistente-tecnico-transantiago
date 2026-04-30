@@ -94,6 +94,7 @@ class ValidadorApp(ctk.CTk):
         tab_core = self.tabview.add("1. Acciones Básicas")
         tab_diag = self.tabview.add("2. Diagnóstico Técnico")
         tab_usb = self.tabview.add("3. Extraer a USB")
+        tab_bidon = self.tabview.add("4. 🛢️ Bidón PPP")
 
         # --- Pestaña 1: CORE ---
         tab_core.columnconfigure((0, 1, 2), weight=1)
@@ -117,6 +118,13 @@ class ValidadorApp(ctk.CTk):
         self.btn_test_red = ctk.CTkButton(tab_diag, text="🌐 Test de Red", fg_color="#7c3aed", hover_color="#5b21b6", command=lambda: self.arrancar_hilo(self.ejecutar_test_red))
         self.btn_test_red.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
+        # --- Fila 2: GPS (Validador) ---
+        self.btn_gps_r = ctk.CTkButton(tab_diag, text="🛰️ GPS Raw (-r)", fg_color="#0F766E", hover_color="#0D6B63", command=lambda: self.arrancar_hilo(lambda: self.ejecutar_gpspipe("r")))
+        self.btn_gps_r.grid(row=1, column=0, padx=5, pady=(0,5), sticky="ew")
+
+        self.btn_gps_w = ctk.CTkButton(tab_diag, text="🛰️ GPS NMEA (-w)", fg_color="#0F766E", hover_color="#0D6B63", command=lambda: self.arrancar_hilo(lambda: self.ejecutar_gpspipe("w")))
+        self.btn_gps_w.grid(row=1, column=1, padx=5, pady=(0,5), sticky="ew")
+
         # --- Pestaña 3: USB ---
         tab_usb.columnconfigure(0, weight=2)
         tab_usb.columnconfigure((1, 2), weight=1)
@@ -129,6 +137,20 @@ class ValidadorApp(ctk.CTk):
         
         self.btn_usb_expulsar = ctk.CTkButton(tab_usb, text="Desmontar Seguro", fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
         self.btn_usb_expulsar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # --- Pestaña 4: BIDÓN PPP ---
+        tab_bidon.columnconfigure((0, 1), weight=1)
+        self.btn_bidon_logs = ctk.CTkButton(tab_bidon, text="📋 Ver Logs PPPd", fg_color="#B45309", hover_color="#92400E", font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_logs_bidon))
+        self.btn_bidon_logs.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
+        self.btn_bidon_ip = ctk.CTkButton(tab_bidon, text="🌐 IP ppp0", fg_color="#0369A1", hover_color="#075985", font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_ip_ppp0))
+        self.btn_bidon_ip.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+        self.btn_bidon_gps_r = ctk.CTkButton(tab_bidon, text="🛰️ GPS Raw (-r, 20 reg)", fg_color="#0F766E", hover_color="#0D6B63", command=lambda: self.arrancar_hilo(lambda: self.ejecutar_gpspipe("r")))
+        self.btn_bidon_gps_r.grid(row=1, column=0, padx=5, pady=(0,5), sticky="ew")
+
+        self.btn_bidon_gps_w = ctk.CTkButton(tab_bidon, text="🛰️ GPS NMEA (-w, 20 reg)", fg_color="#0F766E", hover_color="#0D6B63", command=lambda: self.arrancar_hilo(lambda: self.ejecutar_gpspipe("w")))
+        self.btn_bidon_gps_w.grid(row=1, column=1, padx=5, pady=(0,5), sticky="ew")
 
         self.label_terminal = ctk.CTkLabel(self.frame_der, text="Log Histórico de Acciones:", font=ctk.CTkFont(size=12, weight="bold"))
         self.label_terminal.pack(anchor="w", padx=20, pady=(10, 0))
@@ -217,7 +239,18 @@ class ValidadorApp(ctk.CTk):
         if self.combo_com.get() == "SIMULADOR (Prueba Local)":
             time.sleep(delay / 2)
             resp = ""
-            if "ifconfig" in cmd: resp = "inet 10.38.64.10"
+            if "ifconfig ppp0" in cmd: resp = "ppp0      Link encap:Point-to-Point Protocol\n          inet addr:10.64.64.64  P-t-P:10.64.64.1  Mask:255.255.255.255"
+            elif "ifconfig" in cmd: resp = "inet 10.38.64.10"
+            elif "gpspipe" in cmd and "-r" in cmd: resp = '{"class":"VERSION","release":"3.17"}\n{"class":"TPV","mode":3,"lat":-33.4569,"lon":-70.6483,"speed":0.1}'
+            elif "gpspipe" in cmd and "-w" in cmd: resp = "$GPGGA,164239.00,3327.41,S,07038.90,W,1,08,1.0,520.0,M,0.0,M,,*6F\n$GPRMC,164239.00,A,3327.41,S,07038.90,W,0.0,0.0,290426,,,A*7C"
+            elif "pppd.log" in cmd or ("tail" in cmd and "pppd" in cmd): resp = (
+                "2026-04-29 14:22:23 [pppd.sh] Iniciando pppd.sh (, MODEM=/dev/ttyModemApp, PID=1470)...\n"
+                "2026-04-29 14:22:31 [pppd.sh] Modem encendido...\n"
+                "2026-04-29 14:22:33 [pppd.sh] ...SIM ready\n"
+                "2026-04-29 14:22:45 [pppd.sh] ...registrado en la red GSM\n"
+                "2026-04-29 14:22:57 [pppd.sh] ...enganchado a servicio GPRS\n"
+                "2026-04-29 14:22:57 [pppd.sh] ...subiendo pppd: /usr/sbin/pppd nodetach call gprs"
+            )
             elif cmd == "": resp = "root@cv4-28000001847:/home/pds#"
             # Si estamos dentro de la carpeta TRX y pedimos listado:
             elif cmd == "ll" and self.simulacion_en_carpeta_21: resp = "-rw- trx_2190_07401847.bin\n-rw- trx_2191_07401847.bin\n-rw- trx_2193_07401847.bin"
@@ -673,6 +706,99 @@ class ValidadorApp(ctk.CTk):
             self.log(f"[================================================]\n")
         else:
             self.log(f"[X] No se detectaron archivos de transaccion trx_ en la carpeta /{max_carpeta}/")
+
+    # ================= RUTINAS BIDÓN PPP Y GPS =================
+
+    def ejecutar_logs_bidon(self):
+        """Lee el log PPPd del Bidón con fecha dinámica del equipo Linux."""
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+        # La fecha la construye el propio Linux al ejecutar el comando
+        cmd = "tail -300 /home/pds/logs/$(date +%Y%m%d)_pppd.log"
+        self.log("\n[📋] Leyendo log PPPd del Bidón (últimas 300 líneas del día de hoy)...")
+        salida = self.enviar_y_leer(cmd, delay=2.5)
+
+        # --- Análisis de estados reales del pppd.sh ---
+        # Se evalúa la secuencia más reciente (el final del log tiene el estado actual)
+        # Estado OK: SIM ready -> registrado en GSM -> enganchado a GPRS -> subiendo pppd
+        # Estado ERROR: SIM not ready / CPIN ERROR / no se pudo apagar modem
+
+        if "No such file" in salida or "cannot open" in salida.lower() or not salida.strip():
+            self.log("\n[⚠️] Log no encontrado. El bidón quizás aún no ha iniciado el proceso hoy.")
+
+        elif "subiendo pppd" in salida or "enganchado a servicio GPRS" in salida:
+            # Buscar la última ocurrencia de la secuencia exitosa
+            ultimo_inicio = salida.rfind("Iniciando pppd.sh")
+            bloque_final = salida[ultimo_inicio:] if ultimo_inicio != -1 else salida
+            self.log("\n[✅] ==========================")
+            self.log("[✅] BIDÓN PPP: CONEXIÓN OK")
+            self.log("[✅] ==========================")
+            if "SIM ready" in bloque_final:
+                self.log("  ✔ SIM ready (SIM detectada y operativa)")
+            if "registrado en la red GSM" in bloque_final:
+                self.log("  ✔ Registrado en la red GSM")
+            if "enganchado a servicio GPRS" in bloque_final:
+                self.log("  ✔ Enganchado a servicio GPRS")
+            if "subiendo pppd" in bloque_final:
+                self.log("  ✔ pppd levantado correctamente")
+
+        elif "SIM not ready" in salida or "CPIN ERROR" in salida:
+            self.log("\n[❌] ==========================")
+            self.log("[❌] BIDÓN PPP: ERROR DE SIM CARD")
+            self.log("[❌] ==========================")
+            self.log("  ✖ La SIM no responde o no está presente (CPIN ERROR).")
+            self.log("  → CAUSA 1: SIM Card mal insertada o sucia.")
+            self.log("  → CAUSA 2: Módem sin alimentación eléctrica suficiente.")
+            self.log("  → CAUSA 3: SIM bloqueada o vencida.")
+            if "no se pudo apagar modem" in salida:
+                self.log("  ✖ Además: El módem quedó trabado y no respondía al comando AT^SMSO.")
+
+        elif "no se pudo apagar modem" in salida or "AT^SMSO" in salida:
+            self.log("\n[❌] MÓDEM TRABADO: No respondió al comando de apagado AT^SMSO.")
+            self.log("  → El bidón puede necesitar un reinicio físico del módem.")
+
+        elif "SIM ready" in salida and "registrado en la red GSM" not in salida:
+            self.log("\n[⚠️] SIM detectada pero aún no registrada en la red GSM.")
+            self.log("  → Revisa la cobertura de la antena del bidón.")
+
+        else:
+            self.log("\n[⚠️] Estado indeterminado. Revisa el log completo arriba.")
+
+    def ejecutar_ip_ppp0(self):
+        """Obtiene la IP del interfaz ppp0 del Bidón."""
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+        self.log("\n[🌐] Consultando IP del interfaz ppp0 (Bidón)...")
+        salida = self.enviar_y_leer("ifconfig ppp0", delay=1.0)
+        ip_match = re.search(r'inet\s+(?:addr:)?(\d+\.\d+\.\d+\.\d+)', salida)
+        if ip_match:
+            self.log(f"\n[✅] IP PPP0 del Bidón: {ip_match.group(1)}")
+        else:
+            self.log("\n[❌] No se encontró IP en ppp0. El módem no está conectado o ppp0 no existe.")
+
+    def ejecutar_gpspipe(self, modo="r"):
+        """
+        Lee datos del GPS usando gpspipe con flag -n 20.
+        modo='r' -> RAW JSON del daemon gpsd
+        modo='w' -> Sentencias NMEA formateadas
+        El flag -n 20 lee exactamente 20 registros y termina solo (sin Ctrl+C).
+        """
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+        desc = "RAW (JSON)" if modo == "r" else "NMEA formateado"
+        self.log(f"\n[🛰️] GPS {desc}: ejecutando gpspipe -{modo} -n 20 (termina solo)...")
+        salida = self.enviar_y_leer(f"gpspipe -{modo} -n 20", delay=5.0)
+        if "$GPGGA" in salida or "$GPRMC" in salida or "TPV" in salida or "lat" in salida:
+            self.log("\n[✅] GPS con señal activa. Coordenadas capturadas arriba.")
+        elif "can't connect" in salida.lower() or "No such file" in salida:
+            self.log("\n[❌] gpsd no está corriendo o gpspipe no está instalado en el equipo.")
+        elif not salida.strip():
+            self.log("\n[⚠️] Sin respuesta del GPS. El equipo podría no tener fix satelital aún.")
+        else:
+            self.log("\n[⚠️] GPS sin fix claro. Revisa los datos arriba manualmente.")
 
     # ================= RUTINAS NUEVAS (VIGÍA Y DIAGNÓSTICO) =================
     def ejecutar_test_disco(self):
