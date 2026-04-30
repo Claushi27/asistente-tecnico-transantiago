@@ -43,6 +43,9 @@ class ValidadorApp(ctk.CTk):
 
         self.lbl_id = ctk.CTkLabel(self.frame_izq, text="ID Validador: DESCONECTADO", text_color="yellow", font=ctk.CTkFont(size=14, weight="bold"))
         self.lbl_id.pack(pady=10)
+
+        self.lbl_patente = ctk.CTkLabel(self.frame_izq, text="Tipo: --", font=ctk.CTkFont(size=13, weight="bold"), fg_color="gray", corner_radius=5)
+        self.lbl_patente.pack(pady=(0, 5), ipadx=10, ipady=3)
         
         self.lbl_ip = ctk.CTkLabel(self.frame_izq, text="IP (eth0): --", font=ctk.CTkFont(size=12))
         self.lbl_ip.pack(pady=5)
@@ -106,6 +109,9 @@ class ValidadorApp(ctk.CTk):
         
         self.btn_reparar = ctk.CTkButton(tab_core, text="🗑️ Eliminar NO y Reiniciar", fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
         self.btn_reparar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        self.btn_patente = ctk.CTkButton(tab_core, text="🚌 Leer Patente / Tipo de Equipo", fg_color="#4F46E5", hover_color="#4338CA", command=lambda: self.arrancar_hilo(self.ejecutar_leer_patente))
+        self.btn_patente.grid(row=1, column=0, columnspan=3, padx=5, pady=(0,5), sticky="ew")
 
         # --- Pestaña 2: DIAGNOSTICO ---
         tab_diag.columnconfigure((0, 1, 2), weight=1)
@@ -256,6 +262,7 @@ class ValidadorApp(ctk.CTk):
             elif cmd == "ll" and self.simulacion_en_carpeta_21: resp = "-rw- trx_2190_07401847.bin\n-rw- trx_2191_07401847.bin\n-rw- trx_2193_07401847.bin"
             # Si estamos en ll general o pds:
             elif cmd == "ll" and "trx" not in cmd: resp = "drwx V_8\n-rw- ok_8\ndrwx v_12\ndrwx NO_12\n-rw- check_V_8\n-rw- infoval_07401847.csv"
+            elif "cat" in cmd and "infoval" in cmd: resp = "07401847,041B0C923C4B80,20260423084757,0,20260423084758,0,0,2,01998,1998,2,0,4,Troncal 2 (D2),0,511,0,0,0,0,0,0,0,,1,8f83475bc433ae81"
             # Si estamos pidiendo la lista de directorios TRX principales
             elif "trx" in cmd and "ll" in cmd: resp = "drwxr-xr-x 0/\ndrwxr-xr-x 1/\ndrwxr-xr-x 21/\n-rw- idx_21_0740.idx"
             elif "tail" in cmd: resp = "INFO log init\nSAM COLD RESET\nWARN low disk"
@@ -706,6 +713,78 @@ class ValidadorApp(ctk.CTk):
             self.log(f"[================================================]\n")
         else:
             self.log(f"[X] No se detectaron archivos de transaccion trx_ en la carpeta /{max_carpeta}/")
+
+    def ejecutar_leer_patente(self):
+        """Lee el archivo infoval CSV y determina si es equipo de LAB o BUS REAL."""
+        # Códigos de patente que identifican equipos de laboratorio (no buses reales)
+        CODIGOS_LAB = {"1998", "01998", "1014", "01014"}
+
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+
+        self.log("\n[🚌] Buscando archivo infoval en /home/pds/btransa...")
+        self.enviar_y_leer("cd /home/pds/btransa", delay=0.5)
+        listado = self.enviar_y_leer("ll", delay=1.0)
+
+        # Encontrar el nombre del archivo infoval
+        amid_match = re.search(r'infoval_(\d+)\.csv', listado)
+        if not amid_match:
+            self.log("[❌] No se encontró el archivo infoval_XXXXXXXX.csv en btransa.")
+            return
+
+        amid = amid_match.group(1)
+        archivo = f"infoval_{amid}.csv"
+        self.log(f"[+] Leyendo contenido de {archivo}...")
+        contenido = self.enviar_y_leer(f"cat {archivo}", delay=1.0)
+
+        # Buscar la primera línea con datos (ignorar líneas vacías o de cabecera)
+        linea_datos = ""
+        for linea in contenido.split("\n"):
+            linea = linea.strip()
+            if linea and not linea.startswith("#") and "," in linea:
+                linea_datos = linea
+                break
+
+        if not linea_datos:
+            self.log("[❌] El archivo infoval está vacío o tiene formato inesperado.")
+            return
+
+        campos = linea_datos.split(",")
+        if len(campos) < 10:
+            self.log(f"[⚠️] CSV con pocos campos ({len(campos)}). Revisa el contenido arriba.")
+            return
+
+        # Campo índice 8 = código de patente/servicio (con ceros a la izquierda)
+        # Campo índice 9 = mismo código sin ceros a la izquierda
+        codigo_patente = campos[8].strip()   # Ej: "01998"
+        codigo_limpio  = campos[9].strip()   # Ej: "1998"
+        servicio_nombre = campos[13].strip() if len(campos) > 13 else "--"
+
+        self.log("\n[========== RESULTADO PATENTE ==========]")
+        self.log(f"  ID Validador  : {amid}")
+        self.log(f"  Código campo 8: {codigo_patente}")
+        self.log(f"  Código campo 9: {codigo_limpio}")
+        self.log(f"  Servicio/Ruta : {servicio_nombre}")
+
+        if codigo_patente in CODIGOS_LAB or codigo_limpio in CODIGOS_LAB:
+            self.log("")
+            self.log("  ⚗️  TIPO: EQUIPO DE LABORATORIO")
+            self.log(f"  (Código {codigo_limpio} = validador de pruebas, no está en bus real)")
+            self.lbl_patente.configure(
+                text=f"🔬 LAB — Cód: {codigo_limpio}",
+                fg_color="#7C3AED", text_color="white"
+            )
+        else:
+            self.log("")
+            self.log("  🚌  TIPO: BUS EN SERVICIO REAL")
+            self.log(f"  (Código {codigo_limpio} — Ruta: {servicio_nombre})")
+            self.lbl_patente.configure(
+                text=f"🚌 BUS — Cód: {codigo_limpio}",
+                fg_color="#059669", text_color="white"
+            )
+
+        self.log("[=======================================]\n")
 
     # ================= RUTINAS BIDÓN PPP Y GPS =================
 
