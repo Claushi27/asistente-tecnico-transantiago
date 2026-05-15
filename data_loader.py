@@ -24,7 +24,7 @@ def load_data():
 
     # Convertir 'Fecha Revision' a datetime
     if 'Fecha Revision' in df.columns:
-        df['Fecha Revision'] = pd.to_datetime(df['Fecha Revision'], errors='coerce')
+        df['Fecha Revision'] = pd.to_datetime(df['Fecha Revision'], dayfirst=True, errors='coerce')
     
     # Asegurar que AMID sea string sin decimales para búsqueda exacta
     if 'AMID' in df.columns:

@@ -82,7 +82,7 @@ col_alert1, col_alert2 = st.columns([1, 1])
 with col_alert1:
     st.subheader("🔥 Top Reincidentes")
     if not reincidencias_alert.empty:
-        st.dataframe(reincidencias_alert.style.background_gradient(cmap='Reds'), use_container_width=True)
+        st.dataframe(reincidencias_alert, use_container_width=True)
     else:
         st.success("¡Excelente! No hay equipos que hayan ido a Garantía más de 1 vez en este periodo.")
 
