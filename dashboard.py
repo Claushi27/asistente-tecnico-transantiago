@@ -99,25 +99,39 @@ with col_alert2:
         detalle_completo = df_raw[df_raw['AMID'].isin(amids_to_search)]
         
         if not detalle_completo.empty:
-            # Resumen de cuántas veces han salido y por qué motivo
-            resumen_amid = detalle_completo.groupby(['AMID', 'Tipo Salida']).size().reset_index(name='Cantidad Historica')
+            # Crear tabla dinámica para que cada "Tipo Salida" sea una columna separada
+            resumen_amid = detalle_completo.pivot_table(
+                index='AMID', 
+                columns='Tipo Salida', 
+                aggfunc='size', 
+                fill_value=0
+            ).reset_index()
+            
+            # Sumar el total de intervenciones
+            cols_numericas = resumen_amid.select_dtypes(include='number').columns
+            resumen_amid['Total Intervenciones'] = resumen_amid[cols_numericas].sum(axis=1)
         else:
-            resumen_amid = pd.DataFrame(columns=['AMID', 'Tipo Salida', 'Cantidad Historica'])
+            resumen_amid = pd.DataFrame(columns=['AMID', 'Garantia', 'Total Intervenciones'])
 
         # Encontrar los AMIDs ingresados que no están en la base de datos
         amids_encontrados = detalle_completo['AMID'].unique() if not detalle_completo.empty else []
         amids_faltantes = [a for a in amids_to_search if a not in amids_encontrados]
         
         if amids_faltantes:
-            df_faltantes = pd.DataFrame({
-                'AMID': amids_faltantes,
-                'Tipo Salida': 'Nunca ha fallado/Sin registro',
-                'Cantidad Historica': 0
-            })
+            # Los que no existen los agregamos con ceros
+            df_faltantes = pd.DataFrame([{'AMID': a, 'Total Intervenciones': 0} for a in amids_faltantes])
             resumen_amid = pd.concat([resumen_amid, df_faltantes], ignore_index=True)
-
+            
         if not resumen_amid.empty:
-            resumen_amid = resumen_amid.sort_values(by=['Cantidad Historica', 'AMID'], ascending=[False, True])
+            # Rellenar nulos con 0 por la concatenación y convertir a enteros
+            resumen_amid = resumen_amid.fillna(0)
+            cols_num = resumen_amid.columns.drop('AMID')
+            resumen_amid[cols_num] = resumen_amid[cols_num].astype(int)
+            
+            # Intentar ordenar por Garantía si existe esa columna, sino por el Total
+            sort_cols = ['Garantia', 'Total Intervenciones'] if 'Garantia' in resumen_amid.columns else ['Total Intervenciones']
+            resumen_amid = resumen_amid.sort_values(by=sort_cols, ascending=False)
+            
             st.dataframe(resumen_amid, use_container_width=True)
             
         if not detalle_completo.empty:
