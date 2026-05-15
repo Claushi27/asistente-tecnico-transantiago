@@ -45,9 +45,8 @@ def filter_by_date(df, date_col, months=None):
     if months is None or date_col not in df.columns:
         return df
         
-    latest_date = df[date_col].max()
-    if pd.isna(latest_date):
-        return df
-        
-    start_date = latest_date - pd.DateOffset(months=months)
+    today = pd.Timestamp.today()
+    start_date = today - pd.DateOffset(months=months)
+    
+    # Filtramos desde start_date hasta el futuro (por si hay fechas con horas desfasadas de hoy)
     return df[df[date_col] >= start_date]

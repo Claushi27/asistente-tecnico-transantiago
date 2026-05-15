@@ -102,7 +102,9 @@ with col_alert2:
             # Mostrar detalle de esos equipos
             st.markdown("**Detalle de Fallas para los AMID buscados:**")
             detalle = df_garantia[df_garantia['AMID'].isin(amids_to_search)][['AMID', 'Fecha Revision', 'TIPO', 'Diagnostico', 'Tecnico resp.']]
-            st.dataframe(detalle)
+            # Ordenar para agrupar el mismo AMID y ver la historia cronológicamente
+            detalle = detalle.sort_values(by=['AMID', 'Fecha Revision'], ascending=[True, False])
+            st.dataframe(detalle, use_container_width=True)
         else:
             st.info("Los AMID ingresados no registran salidas a Garantía en este periodo.")
 
