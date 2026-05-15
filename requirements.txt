@@ -1,2 +1,7 @@
 customtkinter==5.2.2
 pyserial==3.5
+streamlit
+pandas
+plotly
+openpyxl
+python-dotenv
