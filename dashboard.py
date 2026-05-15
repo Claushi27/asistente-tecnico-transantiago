@@ -94,19 +94,42 @@ with col_alert2:
     if search_input:
         # Limpiar entrada y buscar
         amids_to_search = [a.strip() for a in search_input.replace(',', ' ').split() if a.strip()]
-        result_search = reincidencias[reincidencias['AMID'].isin(amids_to_search)]
         
-        if not result_search.empty:
-            st.dataframe(result_search, use_container_width=True)
+        # BUSCAMOS EN EL HISTORIAL COMPLETO (df_raw) SIN FILTROS DE FECHA NI GARANTÍA
+        detalle_completo = df_raw[df_raw['AMID'].isin(amids_to_search)]
+        
+        if not detalle_completo.empty:
+            # Resumen de cuántas veces han salido y por qué motivo
+            resumen_amid = detalle_completo.groupby(['AMID', 'Tipo Salida']).size().reset_index(name='Cantidad Historica')
+        else:
+            resumen_amid = pd.DataFrame(columns=['AMID', 'Tipo Salida', 'Cantidad Historica'])
+
+        # Encontrar los AMIDs ingresados que no están en la base de datos
+        amids_encontrados = detalle_completo['AMID'].unique() if not detalle_completo.empty else []
+        amids_faltantes = [a for a in amids_to_search if a not in amids_encontrados]
+        
+        if amids_faltantes:
+            df_faltantes = pd.DataFrame({
+                'AMID': amids_faltantes,
+                'Tipo Salida': 'Nunca ha fallado/Sin registro',
+                'Cantidad Historica': 0
+            })
+            resumen_amid = pd.concat([resumen_amid, df_faltantes], ignore_index=True)
+
+        if not resumen_amid.empty:
+            resumen_amid = resumen_amid.sort_values(by=['Cantidad Historica', 'AMID'], ascending=[False, True])
+            st.dataframe(resumen_amid, use_container_width=True)
             
-            # Mostrar detalle de esos equipos
-            st.markdown("**Detalle de Fallas para los AMID buscados:**")
-            detalle = df_garantia[df_garantia['AMID'].isin(amids_to_search)][['AMID', 'Fecha Revision', 'TIPO', 'Diagnostico', 'Tecnico resp.']]
+        if not detalle_completo.empty:
+            # Mostrar detalle cronológico de esos equipos
+            st.markdown("**Historial Completo para los AMID buscados (Todas las fechas):**")
+            detalle = detalle_completo[['AMID', 'Fecha Revision', 'TIPO', 'Tipo Salida', 'Diagnostico', 'Tecnico resp.']]
+            
             # Ordenar para agrupar el mismo AMID y ver la historia cronológicamente
             detalle = detalle.sort_values(by=['AMID', 'Fecha Revision'], ascending=[True, False])
-            st.dataframe(detalle, use_container_width=True)
-        else:
-            st.info("Los AMID ingresados no registran salidas a Garantía en este periodo.")
+            
+            # Le damos altura para que se vean más filas sin tener que hacer tanto scroll
+            st.dataframe(detalle, use_container_width=True, height=500)
 
 st.markdown("---")
 
