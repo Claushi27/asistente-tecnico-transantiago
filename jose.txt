@@ -1,0 +1,139 @@
+﻿
+
+
+preparadords
+123456
+Sonda.2020
+
+amixer set "HP DAC" 100% unmute > /dev/null
+alsactl store
+
+setopid 02
+setbusid 1998
+prep 07401111
+
+OCP2 PRODUCCION
+preparador03
+sonda2020
+Sonda.2020
+
+pacman -Q | grep "pseudo" | awk '{print $2}'
+
+nano /etc/sysconfig/network-interfaces/eth0
+nano /etc/initng/runlevel/default.runlevel
+
+ngc --stop daemon/generador_partida
+nano /etc/initng/runlevel/default.runlevel
+
+telnet 200.71.222.76 9798 
+
+nano /etc/resolv.conf
+
+10.172.40.81
+
+
+nano /etc/sysconfig/network-interfaces/eth0
+
+ETH0_ID_ADDR="disable"
+
+ETH0_IP_ADDR="175.21.8.11"
+ETH0_IP_PREFIX="23"
+ETH0_IP_GW="175.21.8.1"
+
+desactivar boot
+cd /home/pval/ 
+07402495
+ifconfig
+
+Comval
+cd /home/pcon/
+
+"DESTENDPOINT"="http://200.71.222.71:9798/WSSwitchVal"
+"DESTENDPOINT"="http://200.71.222.74:9798/WSSwitchVal"
+
+dsandova
+175.21.8.195
+23
+175.21.8.1
+
+run bootcmd_sysinstall
+
+
+nano /home/pcon/CommVAL.cfg
+cat /home/pcon/CommVAL.cfg
+/home/pds/logs/Mval/
+
+	202-206
+
+175.21.8.205
+7203604 .202
+7401143 .195
+http://10.172.53.80:8080/HSAConsole/index.jsp
+7407064
+
+nand scrub
+y
+nand erase
+loady
+--imx
+run upd_nand_fdt
+loady
+---uI
+run upd_nand_kern
+insertar pendrive
+run bootcmd_sysinstall
+
+PREPRO
+nano /home/pcon/CommVAL.cfg 
+"DESTENDPOINT"="http://200.71.222.74:9798/WSSwitchVal"
+nano /sonda/etc/default/ntpd
+ NTPSERVERLIST="200.71.222.74"
+
+/home/pds/logs
+/home/pdifu         
+
+*************************
+*	root
+*	mesdk002
+*	ngc --stop daemon/generador_partida
+*
+*	mount /dev/sda1 /mnt
+*
+*cp -rv /home/ /mnt/home/
+*
+*umount /mnt
+*
+***************************************
+
+cd /mnt/valconfig_CVBx5.BC/
+./instalar_ambiente.sh -a 740zp
+cd
+
+ngreboot
+*********************************
+
+dsandova
+
+find . -print | grep -i 1969
+find . -print | grep -i 2021
+
+pacman --query | grep pseudo-sw-
+
+1.	run clearenv
+2.	loady
+3.	Cargar “u-boot-1024m-0.6-0”
+4.	run upd_nor_uboot
+5.	nand scrub
+6.	Reiniciar validador
+
+LISTA NEGRA 
+cd /home/pds/V_/etc/MREF
+ll 
+cd /home                                                                                                                                   
+find . -print | grep -i lista
+
+
+cat /sonda/valconfig.ambiente
+cat pppd.log
+/sonda/log/pppd.log
+email.sonda Sonda.2025

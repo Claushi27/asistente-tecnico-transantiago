@@ -131,10 +131,17 @@ class ValidadorApp(ctk.CTk):
         self.btn_gps_w = ctk.CTkButton(tab_diag, text="🛰️ GPS NMEA (-w)", fg_color="#0F766E", hover_color="#0D6B63", command=lambda: self.arrancar_hilo(lambda: self.ejecutar_gpspipe("w")))
         self.btn_gps_w.grid(row=1, column=1, padx=5, pady=(0,5), sticky="ew")
 
-        # --- Pestaña 3: USB ---
+        # --- Fila 3: Utilidades (Audio / Red) ---
+        self.btn_audio = ctk.CTkButton(tab_diag, text="🔊 Max Volumen", fg_color="#EAB308", hover_color="#CA8A04", text_color="black", command=lambda: self.arrancar_hilo(self.ejecutar_volumen_max))
+        self.btn_audio.grid(row=2, column=0, padx=5, pady=(0,5), sticky="ew")
+
+        self.btn_telnet = ctk.CTkButton(tab_diag, text="🌐 Test Sonda (Telnet)", fg_color="#14B8A6", hover_color="#0D9488", command=lambda: self.arrancar_hilo(self.ejecutar_test_sonda))
+        self.btn_telnet.grid(row=2, column=1, padx=5, pady=(0,5), sticky="ew")
+
+        # --- Pestaña 3: USB e Interno ---
         tab_usb.columnconfigure(0, weight=2)
         tab_usb.columnconfigure((1, 2), weight=1)
-        self.entry_ruta_usb = ctk.CTkEntry(tab_usb, placeholder_text="/home", font=ctk.CTkFont(family="Consolas", size=12))
+        self.entry_ruta_usb = ctk.CTkEntry(tab_usb, placeholder_text="/home (Origen)", font=ctk.CTkFont(family="Consolas", size=12))
         self.entry_ruta_usb.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         self.entry_ruta_usb.insert(0, "/home")
         
@@ -143,6 +150,13 @@ class ValidadorApp(ctk.CTk):
         
         self.btn_usb_expulsar = ctk.CTkButton(tab_usb, text="Desmontar Seguro", fg_color="#475569", hover_color="#334155", command=lambda: self.arrancar_hilo(self.rutina_desmontar_usb))
         self.btn_usb_expulsar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        # --- Fila 2: Copia Interna ---
+        self.entry_ruta_destino = ctk.CTkEntry(tab_usb, placeholder_text="/mnt/destino (Destino Copia Interna)", font=ctk.CTkFont(family="Consolas", size=12))
+        self.entry_ruta_destino.grid(row=1, column=0, padx=5, pady=(0,5), sticky="ew")
+        
+        self.btn_copia_interna = ctk.CTkButton(tab_usb, text="Copia Interna (Sin USB)", fg_color="#8B5CF6", hover_color="#7C3AED", command=lambda: self.arrancar_hilo(self.rutina_copia_interna))
+        self.btn_copia_interna.grid(row=1, column=1, columnspan=2, padx=5, pady=(0,5), sticky="ew")
 
         # --- Pestaña 4: BIDÓN PPP ---
         tab_bidon.columnconfigure((0, 1), weight=1)
@@ -591,15 +605,16 @@ class ValidadorApp(ctk.CTk):
             return
 
         self.log(f"\n{'-'*40}\n[⏳] 1. Montando el Pendrive USB al sistema Linux...")
-        self.enviar_y_leer("mount /dev/sda1 /mnt", delay=1.0)
+        # El comando mount es rápido, usamos delay bajo para aprovechar detección de prompt
+        self.enviar_y_leer("mount /dev/sda1 /mnt", delay=0.5)
         
         amid_nombre = self.target_id if hasattr(self, 'target_id') and self.target_id else "0000X"
         ruta_destino = f"/mnt/amid_{amid_nombre}"
         
-        self.log(f"[⏳] 2. Iniciando COPIA desde '{ruta_origen}' hacia '{ruta_destino}'...")
-        self.log("[⚠️] EL PROGRAMA SE CONGELARÁ ESPERANDO QUE TERMINE, ALGUNAS CARPETAS PESAN MEGAS. SOLO ESPERA.")
+        self.log(f"[⏳] 2. Iniciando COPIA USB desde '{ruta_origen}' hacia '{ruta_destino}'...")
+        self.log("[⚠️] EL PROGRAMA ESPERARÁ A QUE TERMINE. ALGUNAS CARPETAS PESAN MUCHO.")
         
-        comando_copiar = f"cp -r {ruta_origen} {ruta_destino}"
+        comando_copiar = f"cp -rv {ruta_origen} {ruta_destino}"
         
         if self.combo_com.get() == "SIMULADOR (Prueba Local)":
             time.sleep(3)
@@ -612,12 +627,44 @@ class ValidadorApp(ctk.CTk):
         if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
             return
             
-        self.log("\n[⏳] Aplicando sincronización de disco (sync)...")
-        self.enviar_y_leer("sync", delay=1.0)
+        self.log("\n[⏳] Aplicando sincronización de disco (sync)... (Puede tardar)")
+        # Sync puede demorar en vaciar buffers de datos
+        self.enviar_lectura_larga("sync", timeout_mins=2)
         
-        self.log("[⏳] Desmontando la unidad USB (/mnt)...")
-        self.enviar_y_leer("umount /mnt", delay=2.0)
+        self.log("[⏳] Desmontando la unidad USB (/mnt)... (Puede tardar)")
+        # Umount también puede demorar bastante si el sistema está liberando buffers
+        salida_umount = self.enviar_lectura_larga("umount /mnt", timeout_mins=2)
+        self.log(f"> umount /mnt\n{salida_umount}")
         self.log("[✅] ¡Extracción Segura Completada! Ya puedes retirar tu pendrive del validador de Sonda.")
+
+    def rutina_copia_interna(self):
+        ruta_origen = self.entry_ruta_usb.get().strip()
+        ruta_destino = self.entry_ruta_destino.get().strip()
+        
+        if not ruta_origen or not ruta_destino:
+            self.log("[X] Error: Debes especificar ruta de origen y de destino (en la cajita de abajo).")
+            return
+            
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero al puerto COM.")
+            return
+            
+        self.log(f"\n{'-'*40}\n[⏳] Iniciando COPIA INTERNA (Sin montar USB)...")
+        self.log(f"Origen: {ruta_origen}")
+        self.log(f"Destino: {ruta_destino}")
+        self.log("[⚠️] EL PROGRAMA ESPERARÁ A QUE LA COPIA TERMINE.")
+        
+        comando_copiar = f"cp -rv {ruta_origen} {ruta_destino}"
+        
+        if self.combo_com.get() == "SIMULADOR (Prueba Local)":
+            time.sleep(2)
+            self.log(f"> {comando_copiar}\n[Simulador] Copia interna simulada finalizada.")
+        else:
+            salida = self.enviar_lectura_larga(comando_copiar, timeout_mins=5)
+            self.log(f"> {comando_copiar}\n{salida}")
+            self.log("[⏳] Sincronizando disco (sync)...")
+            self.enviar_lectura_larga("sync", timeout_mins=1)
+            self.log("[✅] COPIA INTERNA COMPLETADA Y SINCRONIZADA.")
 
     def pedir_confirmacion_reparar(self):
         if not self.target_no_version or not self.target_no_version.lower().startswith("no_"):
@@ -785,6 +832,34 @@ class ValidadorApp(ctk.CTk):
             )
 
         self.log("[=======================================]\n")
+
+    def ejecutar_volumen_max(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+            
+        self.log("\n[🔊] Subiendo el volumen del validador al 100% y quitando mute...")
+        salida1 = self.enviar_y_leer('amixer set "HP DAC" 100% unmute > /dev/null', delay=0.5)
+        self.log("[🔊] Guardando configuración de audio (alsactl store)...")
+        salida2 = self.enviar_y_leer('alsactl store', delay=0.5)
+        self.log("[✅] Volumen al máximo aplicado.")
+
+    def ejecutar_test_sonda(self):
+        if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
+            self.log("[ERROR] Conecta primero.")
+            return
+            
+        self.log("\n[🌐] Probando conexión Telnet a los servidores de Sonda (200.71.222.76:9798)...")
+        self.log("[!] Si el validador no tiene internet, esto podría demorar. Presiona '🛑 Ctrl+C' si tarda mucho.")
+        salida = self.enviar_lectura_larga("telnet 200.71.222.76 9798", timeout_mins=1)
+        
+        if "Connected" in salida:
+            self.log("[✅] ¡Conexión Exitosa al SwitchVal de Sonda!")
+            # Presionar Ctrl+C internamente para salir de un telnet exitoso que queda abierto
+            if self.ser and self.ser.is_open:
+                self.ser.write(b'\x03')
+        else:
+            self.log("[❌] No se pudo conectar. Revisa la IP, el ping o los logs del PPPd.")
 
     # ================= RUTINAS BIDÓN PPP Y GPS =================
 

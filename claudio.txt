@@ -1,0 +1,34 @@
+# Sugerencias y Mejoras para el Asistente Validador Transantiago
+
+Hola Claudio, tras revisar la aplicación y los apuntes de José, aquí te dejo una lista de cosas que podríamos agregar o utilizar a futuro para hacer la herramienta aún más potente:
+
+## 1. Automatizaciones de "Lista Negra"
+En los apuntes de José aparece `find . -print | grep -i lista`. Las listas negras o listas blancas son los archivos de tarjetas bloqueadas.
+*   **Idea:** Podríamos agregar un botón en "Diagnóstico" llamado "Buscar Lista Negra". El asistente buscaría automáticamente este archivo en el validador y te mostraría la fecha de su última modificación. Así sabes si el validador está sincronizando correctamente los bloqueos de tarjetas bip!.
+
+## 2. Visor Rápido de Configuración (CommVAL.cfg)
+El archivo `CommVAL.cfg` es el corazón del validador (allí están las IPs del servidor y el WSSwitchVal).
+*   **Idea:** Un botón que diga "Leer CommVAL" que haga un `cat /home/pcon/CommVAL.cfg`, extraiga mágicamente las líneas que dicen `DESTENDPOINT` y te las muestre bonitas en pantalla. Así te aseguras que no esté apuntando a un servidor de pruebas o viejo.
+
+## 3. Modo Recuperación Profunda (Flasheo U-Boot)
+Los apuntes mencionan `nand scrub`, `loady` y `run upd_nand_fdt`. Estos son para cuando la placa está muerta (brickeada).
+*   **Idea:** Si alguna vez necesitan revivir placas usando el cable de consola, podríamos hacer una pestaña especial llamada "Flasheo Avanzado" que automatice el envío de los archivos de instalación (kernel, device tree) a través de protocolo Y-MODEM. *Ojo: esto es peligroso y requeriría mucha seguridad en el código, pero es posible*.
+
+## 4. Botón de Auto-Diagnóstico de Red
+Viendo que usan `ifconfig eth0` y también `ifconfig ppp0` (para el bidón 3G/4G).
+*   **Idea:** Un botón maestro de "Diagnóstico de Red Completo". Haría lo siguiente:
+    1. Revisa si hay IP por cable (eth0).
+    2. Revisa si hay IP celular (ppp0).
+    3. Hace ping a Google (`ping -c 3 8.8.8.8`).
+    4. Verifica con Telnet si ve al Switch de Sonda.
+    El resultado sería un solo "Semáforo" (Todo en verde o con alertas rojas), sin tener que enviar 4 comandos distintos.
+
+## 5. Resumen Diario Inteligente (Portapapeles)
+Como se menciona en tu `DOCUMENTACION_PROYECTO.md`, tener un botón para el Excel.
+*   **Idea:** Un botón que compile: `[Fecha] - [ID Validador] - [Patente/Servicio] - [Estado del Diagnóstico]`. Al hacer clic, se copia todo al portapapeles de Windows, listo para que presiones "Ctrl+V" en tu Google Sheets o archivo Excel.
+
+## 6. Monitoreo de Versiones Instaladas (Pacman)
+El comando `pacman -Q | grep "pseudo"` lista qué versión exacta del software base instaló Sonda.
+*   **Idea:** Mostrar la versión del software de forma permanente en el panel izquierdo (junto a "Versión Alta" y "OK_"). Esto ayudaría a detectar validadores con software demasiado antiguo.
+
+Si te gusta alguna de estas ideas, ¡avísame y podemos programarla en el `app.py`!
