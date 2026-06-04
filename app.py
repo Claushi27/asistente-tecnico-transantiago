@@ -25,6 +25,9 @@ class ValidadorApp(ctk.CTk):
 
         self.ser = None 
         self.target_no_version = None 
+        self.target_v_max = None
+        self.target_ok = None
+        self.target_check = None
         self.simulacion_en_carpeta_21 = False
         self.monitor_activo = False
         self.comando_en_curso = False
@@ -100,18 +103,21 @@ class ValidadorApp(ctk.CTk):
         tab_bidon = self.tabview.add("4. 🛢️ Bidón PPP")
 
         # --- Pestaña 1: CORE ---
-        tab_core.columnconfigure((0, 1, 2), weight=1)
+        tab_core.columnconfigure((0, 1, 2, 3), weight=1)
         self.btn_escanear = ctk.CTkButton(tab_core, text="🔄 Conectar y Analizar", font=ctk.CTkFont(weight="bold"), command=lambda: self.arrancar_hilo(self.ejecutar_escaneo))
         self.btn_escanear.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         
         self.btn_detener = ctk.CTkButton(tab_core, text="⏹️ Detener Reinicio", fg_color="#D97706", hover_color="#B45309", command=lambda: self.arrancar_hilo(self.ejecutar_detener))
         self.btn_detener.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         
-        self.btn_reparar = ctk.CTkButton(tab_core, text="🗑️ Eliminar NO y Reiniciar", fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
+        self.btn_reparar = ctk.CTkButton(tab_core, text="🗑️ Eliminar NO", fg_color="#DC2626", hover_color="#991B1B", command=self.pedir_confirmacion_reparar)
         self.btn_reparar.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
+        self.btn_reparar_full = ctk.CTkButton(tab_core, text="🗑️ Eliminar Act. Completa", fg_color="#9F1239", hover_color="#881337", command=self.pedir_confirmacion_reparar_full)
+        self.btn_reparar_full.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
+
         self.btn_patente = ctk.CTkButton(tab_core, text="🚌 Leer Patente / Tipo de Equipo", fg_color="#4F46E5", hover_color="#4338CA", command=lambda: self.arrancar_hilo(self.ejecutar_leer_patente))
-        self.btn_patente.grid(row=1, column=0, columnspan=3, padx=5, pady=(0,5), sticky="ew")
+        self.btn_patente.grid(row=1, column=0, columnspan=4, padx=5, pady=(0,5), sticky="ew")
 
         # --- Pestaña 2: DIAGNOSTICO ---
         tab_diag.columnconfigure((0, 1, 2), weight=1)
@@ -448,6 +454,9 @@ class ValidadorApp(ctk.CTk):
             v_nums = []
             ok_str, no_str, check_str = "--", "--", "--"
             self.target_no_version = None
+            self.target_v_max = None
+            self.target_ok = None
+            self.target_check = None
 
             for palabra in listado_ll.split():
                 p_lower = palabra.lower()
@@ -456,13 +465,17 @@ class ValidadorApp(ctk.CTk):
                     if num: v_nums.append((int(num[-1]), palabra))
                 elif p_lower.startswith("ok_"):
                     ok_str = palabra
+                    self.target_ok = palabra
                 elif p_lower.startswith("no_"):
                     no_str = palabra
                     self.target_no_version = palabra 
                 elif p_lower.startswith("check_"):
                     check_str = palabra
+                    self.target_check = palabra
             
             v_max_str = max(v_nums, key=lambda x: x[0])[1] if v_nums else "--"
+            if v_nums:
+                self.target_v_max = v_max_str
 
             self.lbl_v_max.configure(text=f"Versión Alta: {v_max_str}")
             if v_max_str == "--":
@@ -697,6 +710,43 @@ class ValidadorApp(ctk.CTk):
         
         if self.ser: self.ser.close()
         self.log("[-] Apagado. Desconecta cable y espera que prenda físico.")
+
+    def pedir_confirmacion_reparar_full(self):
+        archivos_a_borrar = []
+        if self.target_no_version: archivos_a_borrar.append(self.target_no_version)
+        if self.target_v_max: archivos_a_borrar.append(self.target_v_max)
+        if self.target_ok: archivos_a_borrar.append(self.target_ok)
+        if self.target_check: archivos_a_borrar.append(self.target_check)
+        
+        if not archivos_a_borrar:
+            messagebox.showwarning("Invalido", "No se detectaron carpetas de actualización para borrar.")
+            return
+            
+        archivos_str = " /home/pds/".join(archivos_a_borrar)
+        comandos_str = f"1. rm -r /home/pds/{archivos_str}\n2. sync\n3. ngreboot"
+        
+        # PREGUNTA SEGURIDAD
+        resp = messagebox.askyesno("CONFIRMACIÓN DE COMANDOS", f"Estás a punto de ELIMINAR LA ACTUALIZACIÓN COMPLETA.\nSe borrarán:\n{', '.join(archivos_a_borrar)}\n\nSe inyectará:\n{comandos_str}\n\n¿Estás de acuerdo?")
+        if resp:
+            self.arrancar_hilo(lambda: self.ejecutar_reparacion_full_real(archivos_a_borrar))
+        else:
+            self.log("[+] Comando abortado por el usuario.")
+
+    def ejecutar_reparacion_full_real(self, archivos):
+        self.log(f"\n[!] PROCEDIENDO A DESTRUIR CARPETAS DE ACTUALIZACIÓN: {', '.join(archivos)}")
+        
+        for arch in archivos:
+            self.enviar_y_leer(f"rm -r /home/pds/{arch}", delay=0.5)
+            
+        self.log("[+] BORRADO ENVIADO. Sincronizando...")
+        self.enviar_y_leer("sync", delay=2.0)
+        
+        self.log("[+] Forzando Reinicio Térmico (ngreboot)...")
+        self.enviar_y_leer("ngreboot", delay=1.0)
+        
+        if self.ser: self.ser.close()
+        self.log("[-] Apagado. Desconecta cable y espera que prenda físico.")
+
 
     def ejecutar_trx(self):
         if self.combo_com.get() != "SIMULADOR (Prueba Local)" and (not self.ser or not self.ser.is_open):
